@@ -9,9 +9,15 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 
+import config
+
+cfg = config.config
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_PATH = os.path.join(DATA_DIR, "puzzle.db")
+DATA_DIR = cfg.DATA_DIR
+DB_PATH = DATA_DIR / cfg.DB_NAME
+BACKUP_DIR = cfg.BACKUP_DIR
+BACKUP_PREFIX = cfg.BACKUP_PREFIX
+BACKUP_KEEP = cfg.BACKUP_KEEP
 
 
 @contextmanager
@@ -25,19 +31,18 @@ def conn_cm():
         conn.close()
 
 
-def _backup_on_startup(keep: int = 10):
+def _backup_on_startup():
     """每次启动把数据库备份到 data/backup/，保留最近 keep 份。"""
     if not os.path.exists(DB_PATH):
         return
-    bdir = os.path.join(DATA_DIR, "backup")
-    os.makedirs(bdir, exist_ok=True)
+    os.makedirs(BACKUP_DIR, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d-%H%M%S")
     try:
-        shutil.copy2(DB_PATH, os.path.join(bdir, f"puzzle-{ts}.db"))
-        olds = sorted(f for f in os.listdir(bdir)
-                      if f.startswith("puzzle-") and f.endswith(".db"))
-        for old in olds[:-keep]:
-            os.remove(os.path.join(bdir, old))
+        shutil.copy2(DB_PATH, os.path.join(BACKUP_DIR, f"{BACKUP_PREFIX}{ts}.db"))
+        olds = sorted(f for f in os.listdir(BACKUP_DIR)
+                      if f.startswith(BACKUP_PREFIX) and f.endswith(".db"))
+        for old in olds[:-BACKUP_KEEP]:
+            os.remove(os.path.join(BACKUP_DIR, old))
     except OSError:
         pass  # 备份失败不阻塞启动
 
