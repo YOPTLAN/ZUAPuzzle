@@ -1,0 +1,295 @@
+# -*- coding: utf-8 -*-
+"""ZUA-2026 黑匣子破译行动 —— FastAPI 服务端（方案 C）
+
+安全红线：答案与未解锁关卡只存在于服务端，前端永远拿不到。
+
+运行：
+    uvicorn main:app --host 0.0.0.0 --port 8000
+"""
+import hashlib
+import secrets
+import time
+from collections import defaultdict
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+
+import db
+from levels import LEVELS, get_level, total_levels
+
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+COOKIE_NAME = "zua_session"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db.init_db()
+    yield
+
+
+app = FastAPI(title="ZUA-2026 黑匣子破译行动", version="0.1.0", lifespan=lifespan)
+
+# ---- 简易内存限流（DEMO 够用；多进程/多 worker 时需换 Redis/DB）----
+wrong_cooldown_until = {}            # (token, level_id) -> 冷却截止时间
+wrong_attempts = defaultdict(list)   # (token, level_id) -> [时间戳]
+guess_counts = defaultdict(int)      # token -> 交互关已用猜测次数
+hints_used = defaultdict(int)        # (token, level_id) -> 已看提示数
+
+
+# ---------------- 会话 ----------------
+def ensure_player(request: Request, response: Response):
+    token = request.cookies.get(COOKIE_NAME)
+    if not token:
+        token = secrets.token_hex(16)
+        response.set_cookie(COOKIE_NAME, token, max_age=7 * 24 * 3600)
+    return db.get_or_create_player(token)
+
+
+# ---------------- 工具 ----------------
+def normalize(ans: str) -> str:
+    """答案归一化：小写、去空白、全角转半角。"""
+    out = []
+    for ch in ans.lower():
+        code = ord(ch)
+        if code == 0x3000:
+            code = 0x20
+        elif 0xFF01 <= code <= 0xFF5E:
+            code -= 0xFEE0
+        if chr(code) not in " \t\r\n":
+            out.append(chr(code))
+    return "".join(out)
+
+
+def is_unlocked(player, level: dict) -> bool:
+    """顺序解锁：第 1 关永远可玩，其余要求前面全部通过。"""
+    if level["id"] == 1:
+        return True
+    solved = db.solved_set(player["id"])
+    return all(pid in solved for pid in range(1, level["id"]))
+
+
+def public_level(level: dict, solved: bool, unlocked: bool) -> dict:
+    d = {
+        "id": level["id"],
+        "stage": level["stage"],
+        "title": level["title"],
+        "difficulty": level["difficulty"],
+        "type": level["type"],
+        "solved": solved,
+        "unlocked": unlocked,
+        "guess": level.get("guess"),
+    }
+    if solved:  # 已通关才可见碎片，前端据此重建碎片收集
+        d["fragment"] = level["fragment"]
+    return d
+
+
+def rate_limited(token: str, level_id: int) -> int:
+    """返回还需等待秒数；0 表示可以继续尝试。"""
+    key = (token, level_id)
+    if wrong_cooldown_until.get(key, 0) > time.time():
+        return int(wrong_cooldown_until[key] - time.time()) + 1
+    now = time.time()
+    recent = [t for t in wrong_attempts[key] if now - t < 60]
+    wrong_attempts[key] = recent
+    if len(recent) >= 20:  # 每分钟最多 20 次
+        return 60 - int(now - recent[0])
+    return 0
+
+
+# ---------------- 页面 ----------------
+@app.get("/")
+def index():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+# ---- 第 7 关素材：404 链（/missing → robots.txt → /secret）----
+@app.get("/missing")
+def missing():
+    return HTMLResponse(
+        "<h1>404 NOT FOUND</h1><p>线索没有丢——它被拦在了一个叫 robots.txt 的地方？<br>"
+        "去 <a href='/robots.txt'>/robots.txt</a> 看看。</p>",
+        status_code=404,
+    )
+
+
+@app.get("/robots.txt")
+def robots():
+    return Response(
+        "User-agent: *\nDisallow: /secret\n"
+        "# 机器人守则：不让机器人看的东西，人类也别错过\n",
+        media_type="text/plain",
+    )
+
+
+@app.get("/secret")
+def secret():
+    return HTMLResponse(
+        "<h1>🎉 秘密页面</h1><p>你找到了。答案：<b>robot</b></p>"
+    )
+
+
+# ---------------- API ----------------
+@app.get("/api/me")
+def api_me(request: Request, response: Response):
+    player = ensure_player(request, response)
+    return {"token": player["token"][:8], "nickname": player["nickname"],
+            "total": total_levels()}
+
+
+@app.get("/api/levels")
+def api_levels(request: Request, response: Response):
+    player = ensure_player(request, response)
+    solved = db.solved_set(player["id"])
+    return [public_level(lv, lv["id"] in solved, is_unlocked(player, lv))
+            for lv in LEVELS]
+
+
+@app.get("/api/levels/{level_id}")
+def api_level(request: Request, response: Response, level_id: int):
+    player = ensure_player(request, response)
+    lv = get_level(level_id)
+    if not lv:
+        return JSONResponse({"detail": "no such level"}, status_code=404)
+    if not is_unlocked(player, lv):
+        return JSONResponse({"detail": "locked"}, status_code=403)
+    solved = level_id in db.solved_set(player["id"])
+    return {
+        "id": lv["id"], "stage": lv["stage"], "title": lv["title"],
+        "difficulty": lv["difficulty"], "type": lv["type"],
+        "story": lv["story"], "prompt": lv["prompt"],
+        "solved": solved, "hints": lv["hints"],
+        "guess": lv.get("guess"),
+        "console": lv.get("console"),
+        "bars": lv.get("bars"),
+    }
+
+
+class CheckIn(BaseModel):
+    answer: str
+
+
+@app.post("/api/levels/{level_id}/check")
+def api_check(request: Request, response: Response, level_id: int, body: CheckIn):
+    player = ensure_player(request, response)
+    lv = get_level(level_id)
+    if not lv or lv.get("type") != "text":
+        return JSONResponse({"detail": "no such level"}, status_code=404)
+    if not is_unlocked(player, lv):
+        return JSONResponse({"detail": "locked"}, status_code=403)
+    if level_id in db.solved_set(player["id"]):
+        return {"correct": True, "already": True, "message": "这关你已经通过啦"}
+    wait = rate_limited(player["token"], level_id)
+    if wait:
+        return JSONResponse(
+            {"correct": False, "message": f"尝试太频繁，请 {wait} 秒后再试",
+             "cooldown": wait}, status_code=429)
+    guess = normalize(body.answer)
+    if guess in [normalize(a) for a in lv["answers"]]:
+        db.record_solve(player["id"], level_id)
+        solved = db.solved_set(player["id"])
+        return {
+            "correct": True,
+            "fragment": lv["fragment"],
+            "fragment_hint": lv["fragment_hint"],
+            "solved_count": len(solved),
+            "done": len(solved) == total_levels(),
+        }
+    wrong_cooldown_until[(player["token"], level_id)] = time.time() + 3
+    wrong_attempts[(player["token"], level_id)].append(time.time())
+    return {"correct": False, "message": "答案不对，再想想（3 秒后可重试）", "cooldown": 3}
+
+
+class GuessIn(BaseModel):
+    guess: int
+
+
+@app.post("/api/levels/{level_id}/guess")
+def api_guess(request: Request, response: Response, level_id: int, body: GuessIn):
+    player = ensure_player(request, response)
+    lv = get_level(level_id)
+    if not lv or lv.get("type") != "guess":
+        return JSONResponse({"detail": "no such level"}, status_code=404)
+    if not is_unlocked(player, lv):
+        return JSONResponse({"detail": "locked"}, status_code=403)
+    if level_id in db.solved_set(player["id"]):
+        return {"result": "correct", "solved": True}
+    g = lv["guess"]
+    if not (g["lo"] <= body.guess <= g["hi"]):
+        return JSONResponse({"detail": "超出范围"}, status_code=400)
+    token = player["token"]
+    guess_counts[token] += 1
+    used = guess_counts[token]
+    if used > g["max_guesses"]:
+        return JSONResponse(
+            {"result": "fail",
+             "message": f"超过 {g['max_guesses']} 次限制，重新开始。",
+             "used": used, "max": g["max_guesses"]}, status_code=400)
+    # 目标数由 token 确定性派生，无需存储
+    span = g["hi"] - g["lo"] + 1
+    target = (int(hashlib.sha256(token.encode()).hexdigest()[:8], 16) % span) + g["lo"]
+    if body.guess == target:
+        db.record_solve(player["id"], level_id)
+        solved = db.solved_set(player["id"])
+        return {
+            "result": "correct", "solved": True, "used": used,
+            "fragment": lv["fragment"], "fragment_hint": lv["fragment_hint"],
+            "solved_count": len(solved), "done": len(solved) == total_levels(),
+        }
+    return {"result": "higher" if body.guess < target else "lower",
+            "used": used, "max": g["max_guesses"]}
+
+
+@app.get("/api/levels/{level_id}/hints")
+def api_hint(request: Request, response: Response, level_id: int):
+    player = ensure_player(request, response)
+    lv = get_level(level_id)
+    if not lv:
+        return JSONResponse({"detail": "no such level"}, status_code=404)
+    if not is_unlocked(player, lv):
+        return JSONResponse({"detail": "locked"}, status_code=403)
+    key = (player["token"], level_id)
+    idx = hints_used[key]
+    if idx >= len(lv["hints"]):
+        return {"hint": None, "hint_index": idx, "all_used": True}
+    hint = lv["hints"][idx]
+    hints_used[key] = idx + 1
+    return {"hint": hint, "hint_index": idx, "all_used": False}
+
+
+class RankIn(BaseModel):
+    nickname: str
+
+
+@app.post("/api/rank/register")
+def api_rank_register(request: Request, response: Response, body: RankIn):
+    player = ensure_player(request, response)
+    nick = body.nickname.strip()[:24]
+    if not nick:
+        return JSONResponse({"detail": "昵称不能为空"}, status_code=400)
+    db.set_nickname(player["id"], nick)
+    return {"ok": True, "nickname": nick}
+
+
+@app.get("/api/rank")
+def api_rank(request: Request, response: Response):
+    player = ensure_player(request, response)
+    rows = db.finished_rank(total_levels())
+    me_id = player["id"]
+    rank = []
+    for i, r in enumerate(rows, 1):
+        rank.append({
+            "rank": i,
+            "nickname": r["nickname"] or "匿名玩家",
+            "finished_at": r["finished_at"],
+            "me": r["id"] == me_id,
+        })
+    return {"rank": rank, "total_finished": len(rank)}
+
+
+app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

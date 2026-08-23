@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0B0B10">
+<title>ZUA-2026 黑匣子破译行动</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+<!-- 第一关的答案藏在注释里：zua -->
+</head>
+<body>
+<div class="fx-grid" aria-hidden="true"></div>
+<div class="fx-scanlines" aria-hidden="true"></div>
+
+<header class="hud-header">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+        <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/>
+        <path d="M12 12 18.4 5.6"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/>
+      </svg>
+    </span>
+    <div class="brand-text">
+      <strong>ZUA-2026</strong>
+      <span>黑匣子破译行动 · BLACKBOX RECOVERY</span>
+    </div>
+    <span class="live-dot" aria-hidden="true"></span>
+    <span class="live-label" aria-hidden="true">SIG·LIVE</span>
+  </div>
+  <div class="hud-chip" title="已收集的黑匣子碎片">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+      <rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9.5" y="9.5" width="5" height="5"/>
+      <path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/>
+    </svg>
+    <span class="chip-label">FRAGMENTS</span>
+    <b id="fragList">—</b>
+  </div>
+</header>
+
+<nav aria-label="主导航">
+  <button data-view="map" class="active">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M14.1 5.55a2 2 0 0 1 1.8 0l3.65 1.83A1 1 0 0 1 20 8.28v10.1a1 1 0 0 1-.55.9L15 21.25a2 2 0 0 1-1.8 0l-4.2-2.1a2 2 0 0 0-1.8 0l-3.65 1.82A1 1 0 0 1 3 20.1V10a1 1 0 0 1 .55-.9L8 7.15"/>
+      <path d="M15 5.76v15.5M9 3.24v15.5"/>
+    </svg>
+    航线图
+  </button>
+  <button data-view="rank">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+    </svg>
+    排行榜
+  </button>
+</nav>
+
+<main>
+  <!-- 航线图 -->
+  <section id="view-map">
+    <div id="levelList"></div>
+  </section>
+
+  <!-- 关卡 -->
+  <section id="view-level" class="hidden">
+    <button id="backBtn" class="btn btn-ghost btn-sm">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 19-7-7 7-7M19 12H5"/></svg>
+      返回航线图
+    </button>
+    <div class="card hud-card">
+      <div class="story" id="lvStory"></div>
+      <h2 id="lvTitle"></h2>
+      <p class="prompt" id="lvPrompt"></p>
+
+      <div id="barsVisual" class="hidden" role="img" aria-label="信号强度柱状图"></div>
+
+      <div id="textArea">
+        <label class="field-label" for="answerInput">ANSWER // 答案输入</label>
+        <input type="text" id="answerInput" placeholder="输入答案（小写英文/数字）" autocomplete="off" spellcheck="false">
+        <button id="submitBtn" class="btn btn-primary">
+          提交答案
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4Z"/></svg>
+        </button>
+      </div>
+
+      <div id="guessArea" class="hidden">
+        <div id="guessInfo"></div>
+        <label class="field-label" for="guessInput">GUESS // 猜测输入</label>
+        <input type="number" id="guessInput" placeholder="猜一个数" autocomplete="off" inputmode="numeric">
+        <button id="guessBtn" class="btn btn-primary">猜！</button>
+        <div id="guessHistory" aria-live="polite"></div>
+      </div>
+
+      <div id="checkMsg" aria-live="polite"></div>
+
+      <div class="hints">
+        <button id="hintBtn" class="btn btn-hint">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9 18h6M10 22h4M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
+          </svg>
+          要提示
+        </button>
+        <div id="hintMsg" aria-live="polite"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 排行榜 -->
+  <section id="view-rank" class="hidden">
+    <div id="rankBox"></div>
+  </section>
+</main>
+
+<footer>SIGNAL ANALYSIS GROUP · ZUA 计算机学院 · DEMO v0.2 · POWERED BY FASTAPI</footer>
+<script src="/static/app.js"></script>
+</body>
+</html>
