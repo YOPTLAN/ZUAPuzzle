@@ -7,6 +7,7 @@
     uvicorn main:app --host 0.0.0.0 --port 8000
 """
 import hashlib
+import re
 import secrets
 import time
 from collections import defaultdict
@@ -292,12 +293,20 @@ class RankIn(BaseModel):
     nickname: str
 
 
+# 昵称白名单：仅中英文、数字、下划线（防存储型 XSS，服务端治本）
+NICKNAME_PATTERN = re.compile(r"^[a-zA-Z0-9\u4e00-\u9fff_]{1,24}$")
+
+
 @app.post("/api/rank/register")
 def api_rank_register(request: Request, response: Response, body: RankIn):
     player = ensure_player(request, response)
-    nick = body.nickname.strip()[:cfg.NICKNAME_MAX_LEN]
+    nick = body.nickname.strip()
     if not nick:
         return JSONResponse({"detail": "昵称不能为空"}, status_code=400)
+    if len(nick) > cfg.NICKNAME_MAX_LEN or not NICKNAME_PATTERN.fullmatch(nick):
+        return JSONResponse(
+            {"detail": "昵称仅支持中文、英文、数字和下划线，长度 1~24"},
+            status_code=400)
     db.set_nickname(player["id"], nick)
     return {"ok": True, "nickname": nick}
 
