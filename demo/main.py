@@ -339,6 +339,10 @@ NICKNAME_PATTERN = re.compile(r"^[a-zA-Z0-9\u4e00-\u9fff_]{1,24}$")
 @app.post("/api/rank/register")
 def api_rank_register(request: Request, response: Response, body: RankIn):
     player = ensure_player(request, response)
+    if player["nickname"]:
+        # 每 session 仅可登记一次，防反复改名刷屏/抢注
+        return JSONResponse({"detail": "该会话已登记过呼号，无法重复登记"},
+                            status_code=409)
     nick = body.nickname.strip()
     if not nick:
         return JSONResponse({"detail": "昵称不能为空"}, status_code=400)
