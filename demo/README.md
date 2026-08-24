@@ -12,7 +12,10 @@ demo/
 ├── db.py              # SQLite：players / solves 两张表
 ├── levels.py          # ⚠️ 关卡定义 + 答案（组织者专用，勿外传）
 ├── requirements.txt
-├── setup.ps1          # 一键启动脚本（建 venv + 装依赖 + 启动）
+├── setup.ps1          # 一键安装脚本（建 venv + 装依赖，不含启动）
+├── start-local.bat    # 启动：本地/局域网模式（Cookie Secure 关，热重载）
+├── start-prod.bat     # 启动：对外/内网穿透模式（Cookie Secure 开）
+├── reset_db.ps1       # 一键清库（上线前清测试数据）
 ├── static/
 │   ├── index.html     # 前端页面（雷达主题）
 │   ├── style.css
@@ -20,21 +23,26 @@ demo/
 └── data/puzzle.db     # 运行时自动创建
 ```
 
-## 二、启动（在你自己的终端里执行，需要联网）
+## 二、安装与启动（在你自己的终端里执行，首次需联网）
 
 ```powershell
 cd demo
-powershell -ExecutionPolicy Bypass -File setup.ps1
+powershell -ExecutionPolicy Bypass -File setup.ps1   # 仅安装：找 Python → 建 .venv → 装依赖
 ```
 
-脚本会自动：找 Python → 建 `.venv` → 装依赖（清华源）→ 启动 uvicorn。
+安装完成后用**二选一**的启动脚本运行：
+
+| 场景 | 命令 | Cookie Secure | 热重载 |
+|------|------|---------------|--------|
+| 本机 / 局域网 http 直连测试 | `.\start-local.bat` | 关 | 开 |
+| 对外 / 内网穿透（SakuraFrp 等 HTTPS 链路） | `.\start-prod.bat` | 开 | 关 |
 
 如果提示没有 Python：
 
 - 这台机器只装了 Python 管理器，先执行一次 `py install 3.12`（会自动下载真 Python）
 - 或浏览器下载 https://www.python.org/downloads/ 官方安装包，勾选 Add to PATH
 
-启动成功后浏览器打开：**http://127.0.0.1:8000**
+启动成功后浏览器打开：**http://127.0.0.1:8000**（端口以 `config.py` 为准）
 
 > 用 PyCharm 也行：File → Open 打开 `demo` 文件夹 → 设置解释器为 `.venv\Scripts\python.exe`
 > → 右键 `main.py` → Run（或终端跑 `uvicorn main:app --reload`）。
