@@ -2,6 +2,7 @@
    安全说明：本文件不含任何答案；答案校验全部在服务端完成。
    UI 规范：图标一律用内联 SVG（不用 emoji）——ui-ux-pro-max 交付清单要求。 */
 const $ = (id) => document.getElementById(id);
+const BAR_SCALE = 26;  // 柱状图高度缩放因子（px/单位值）
 let LEVELS = [];
 let current = null;      // 当前关卡 payload
 let fragments = [];
@@ -87,7 +88,7 @@ async function openLevel(id) {
   if (current.bars) {
     barsBox.classList.remove("hidden");
     barsBox.innerHTML = current.bars.map(v =>
-      `<div class="bar-col"><div class="bar" style="height:${v * 26}px"></div><div class="bar-val">${v}</div></div>`
+      `<div class="bar-col"><div class="bar" style="height:${v * BAR_SCALE}px"></div><div class="bar-val">${v}</div></div>`
     ).join("");
   } else {
     barsBox.classList.add("hidden");

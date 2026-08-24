@@ -18,12 +18,13 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import config
 import db
 from levels import LEVELS, get_level, total_levels
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
-COOKIE_NAME = "zua_session"
+cfg = config.config
 
 
 @asynccontextmanager
@@ -43,10 +44,10 @@ hints_used = defaultdict(int)        # (token, level_id) -> 已看提示数
 
 # ---------------- 会话 ----------------
 def ensure_player(request: Request, response: Response):
-    token = request.cookies.get(COOKIE_NAME)
+    token = request.cookies.get(cfg.COOKIE_NAME)
     if not token:
         token = secrets.token_hex(16)
-        response.set_cookie(COOKIE_NAME, token, max_age=7 * 24 * 3600)
+        response.set_cookie(cfg.COOKIE_NAME, token, max_age=cfg.COOKIE_MAX_AGE)
     return db.get_or_create_player(token)
 
 
@@ -95,10 +96,10 @@ def rate_limited(token: str, level_id: int) -> int:
     if wrong_cooldown_until.get(key, 0) > time.time():
         return int(wrong_cooldown_until[key] - time.time()) + 1
     now = time.time()
-    recent = [t for t in wrong_attempts[key] if now - t < 60]
+    recent = [t for t in wrong_attempts[key] if now - t < cfg.RATE_LIMIT_COOLDOWN]
     wrong_attempts[key] = recent
-    if len(recent) >= 20:  # 每分钟最多 20 次
-        return 60 - int(now - recent[0])
+    if len(recent) >= cfg.RATE_LIMIT_PER_MIN:  # 每分钟最多 N 次
+        return cfg.RATE_LIMIT_COOLDOWN - int(now - recent[0])
     return 0
 
 
@@ -200,9 +201,9 @@ def api_check(request: Request, response: Response, level_id: int, body: CheckIn
             "solved_count": len(solved),
             "done": len(solved) == total_levels(),
         }
-    wrong_cooldown_until[(player["token"], level_id)] = time.time() + 3
+    wrong_cooldown_until[(player["token"], level_id)] = time.time() + cfg.WRONG_ANSWER_COOLDOWN
     wrong_attempts[(player["token"], level_id)].append(time.time())
-    return {"correct": False, "message": "答案不对，再想想（3 秒后可重试）", "cooldown": 3}
+    return {"correct": False, "message": f"答案不对，再想想（{cfg.WRONG_ANSWER_COOLDOWN} 秒后可重试）", "cooldown": cfg.WRONG_ANSWER_COOLDOWN}
 
 
 class GuessIn(BaseModel):
@@ -232,7 +233,7 @@ def api_guess(request: Request, response: Response, level_id: int, body: GuessIn
              "used": used, "max": g["max_guesses"]}, status_code=400)
     # 目标数由 token 确定性派生，无需存储
     span = g["hi"] - g["lo"] + 1
-    target = (int(hashlib.sha256(token.encode()).hexdigest()[:8], 16) % span) + g["lo"]
+    target = (int(hashlib.sha256(token.encode()).hexdigest()[:cfg.TOKEN_HASH_CHARS], 16) % span) + g["lo"]
     if body.guess == target:
         db.record_solve(player["id"], level_id)
         solved = db.solved_set(player["id"])
@@ -269,7 +270,7 @@ class RankIn(BaseModel):
 @app.post("/api/rank/register")
 def api_rank_register(request: Request, response: Response, body: RankIn):
     player = ensure_player(request, response)
-    nick = body.nickname.strip()[:24]
+    nick = body.nickname.strip()[:cfg.NICKNAME_MAX_LEN]
     if not nick:
         return JSONResponse({"detail": "昵称不能为空"}, status_code=400)
     db.set_nickname(player["id"], nick)

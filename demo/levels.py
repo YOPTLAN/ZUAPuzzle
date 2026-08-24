@@ -10,6 +10,10 @@
 正式版可把碎片与终极题替换为 校史 / 社团暗号 + 转换逻辑。
 """
 
+import config
+
+cfg = config.config
+
 LEVELS = [
     # ============ 第一章 · 启程（教学/热身：教工具，人人能过） ============
     {
@@ -280,14 +284,15 @@ LEVELS = [
 ]
 
 
-# ---- 终极答案：由第 1~14 关碎片按顺序拼接（服务端动态计算，前端不可见）----
+# ---- 终极答案：由配置范围内的关卡碎片按顺序拼接（服务端动态计算，前端不可见）----
 def _final_answer() -> str:
-    frags = [lv["fragment"] for lv in LEVELS if 1 <= lv["id"] <= 14]
+    start, end = cfg.FRAGMENT_LEVEL_RANGE
+    frags = [lv["fragment"] for lv in LEVELS if start <= lv["id"] <= end]
     return "".join(frags)
 
 
 for _lv in LEVELS:
-    if _lv["id"] == 15:
+    if _lv["id"] == cfg.FINAL_LEVEL_ID:
         _lv["answers"] = [_final_answer()]
 
 
