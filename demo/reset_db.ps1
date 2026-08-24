@@ -1,6 +1,6 @@
 ﻿# ZUA-2026 一键清库脚本（上线前清理测试残留用）
 # 功能：自动备份当前数据库到 data\backup\，然后清空玩家/通关/浏览记录
-# 注意：运行前请先停止服务进程（uvicorn / start.bat），否则数据库可能被占用
+# 注意：运行前请先停止服务进程（start-local.bat / start-prod.bat），否则数据库可能被占用
 # 用法：.\reset_db.ps1
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot

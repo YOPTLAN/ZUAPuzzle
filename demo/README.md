@@ -65,11 +65,17 @@ powershell -ExecutionPolicy Bypass -File setup.ps1
 
 ## 四、本地 / 局域网测试
 
+双击或运行 `start-local.bat` 启动（**本地模式**：Cookie 不带 Secure 标志，
+局域网 http 直连也能保持会话；带 `--reload` 热重载）。
+
 - 本机：http://127.0.0.1:8000
 - 手机连同一 Wi-Fi：`uvicorn` 已 `--host 0.0.0.0`，手机访问 `http://<电脑IP>:8000`
-  （`ipconfig` 查 IPv4；Windows 防火墙需放行 8000 入站）
+  （启动横幅会自动显示本机 IPv4；Windows 防火墙需放行 8000 入站）
 
 ## 五、内网穿透测试（SakuraFrp，已安装）
+
+> 对外提供服务请改用 **`start-prod.bat`** 启动（**对外模式**：自动启用
+> Cookie Secure 标志、关闭热重载）。两个脚本只差安全开关，业务功能完全一致。
 
 1. 打开「SakuraFrp 启动器」（桌面快捷方式 / `C:\Program Files\SakuraFrpLauncher`）
 2. 登录 → 创建隧道（或直接用已有隧道）：

@@ -81,11 +81,12 @@ def ensure_player(request: Request, response: Response):
     token = request.cookies.get(cfg.COOKIE_NAME)
     if not token:
         token = secrets.token_hex(16)
-        # HttpOnly 禁止 JS 读取（防 XSS 窃取会话）；Secure 仅 HTTPS 传输；SameSite=Lax 防 CSRF
+        # HttpOnly 禁止 JS 读取（防 XSS 窃取会话）；SameSite=Lax 防 CSRF；
+        # Secure 仅 HTTPS 传输——由启动模式决定（见 config.COOKIE_SECURE）
         response.set_cookie(
             cfg.COOKIE_NAME, token,
             max_age=cfg.COOKIE_MAX_AGE,
-            httponly=True, secure=True, samesite="lax",
+            httponly=True, secure=cfg.COOKIE_SECURE, samesite="lax",
         )
     return db.get_or_create_player(token)
 

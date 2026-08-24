@@ -2,6 +2,7 @@
 """ZUA-2026 Demo 统一配置模块
 所有可调参数集中在此，修改后即时生效，无需改动业务代码。
 """
+import os
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -17,6 +18,8 @@ class Config:
     # Cookie / Session
     COOKIE_NAME: str = "zua_session"
     COOKIE_MAX_AGE: int = 7 * 24 * 3600  # 7 天
+    # Cookie Secure 标志开关：由启动脚本决定（start-local.bat 关 / start-prod.bat 开）
+    COOKIE_SECURE: bool = os.environ.get("ZUA_COOKIE_SECURE", "0") == "1"
 
     # 限流（内存简易限流，多 worker 需换 Redis）
     RATE_LIMIT_PER_MIN: int = 10      # 单关答案校验：每分钟最多尝试次数
