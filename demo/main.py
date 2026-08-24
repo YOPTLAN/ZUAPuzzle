@@ -43,6 +43,23 @@ app = FastAPI(
     openapi_url=None,
 )
 
+# ---- 安全响应头（XSS 纵深防御 + 基础加固；上线独立域名后可再加 HSTS）----
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    # 说明：style-src 含 'unsafe-inline' 是因前端用内联 style 属性渲染动态柱状图；
+    # 防 XSS 核心的 script-src 保持严格 'self'（站点无内联脚本）
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; "
+        "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
+        "font-src 'self' fonts.gstatic.com; img-src 'self'; connect-src 'self'; "
+        "object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 # ---- 简易内存限流（DEMO 够用；多进程/多 worker 时需换 Redis/DB）----
 wrong_cooldown_until = {}            # (token, level_id) -> 冷却截止时间
 wrong_attempts = defaultdict(list)   # (token, level_id) -> [时间戳]
