@@ -112,6 +112,7 @@ async function openLevel(id) {
   $("textArea").classList.toggle("hidden", current.type !== "text");
   $("guessArea").classList.toggle("hidden", current.type !== "guess");
   $("checkMsg").textContent = "";
+  renderHintList((current.revealed_hints || []).map(h => h.text));
   $("hintMsg").textContent = "";
   if (current.type === "guess") initGuess();
   serverSkew = (current.server_now || Date.now() / 1000) - Date.now() / 1000;
@@ -306,18 +307,28 @@ $("guessBtn").addEventListener("click", async () => {
   }
 });
 
-/* 提示 */
+/* 提示：已解锁的提示持久显示（服务端记忆，刷新/重开不消失） */
+function renderHintList(texts) {
+  const box = $("hintList");
+  box.innerHTML = (texts || []).map((t, i) =>
+    `<div class="hint-item">${ICONS.bulb}<b>提示 ${i + 1}</b>：${t}</div>`
+  ).join("");
+}
+
 $("hintBtn").addEventListener("click", async () => {
   if (!current) return;
   try {
     const r = await api(`/api/levels/${current.id}/hints`);
+    renderHintList(r.revealed_texts || []);
     if (r.locked) {
       $("hintMsg").innerHTML = `<span class="warn">${ICONS.alert}${r.message}</span>`;
       return;
     }
-    $("hintMsg").innerHTML = r.hint
-      ? `<span class="warn">${ICONS.bulb}提示 ${r.hint_index + 1}：${r.hint}</span>`
-      : `<span class="warn">${ICONS.alert}没有更多提示了</span>`;
+    if (r.hint) {
+      $("hintMsg").innerHTML = `<span class="ok">${ICONS.bulb}新提示已解锁，共 ${r.revealed_texts.length} 条在列</span>`;
+    } else {
+      $("hintMsg").innerHTML = `<span class="warn">${ICONS.alert}没有更多提示了</span>`;
+    }
   } catch (e) {
     $("hintMsg").textContent = e.message;
   }

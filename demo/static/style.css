@@ -358,3 +358,11 @@ button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none !important
   background: var(--color-background);
   margin-bottom: var(--space-4);
 }
+
+.hint-item {
+  padding: 6px 0 6px 2px;
+  border-bottom: 1px dashed var(--color-border);
+  line-height: 1.8;
+}
+.hint-item:last-child { border-bottom: none; }
+.hint-item b { color: var(--color-warning); font-family: var(--font-display); margin-right: 4px; }
