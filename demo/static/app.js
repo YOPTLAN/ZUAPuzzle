@@ -98,6 +98,15 @@ async function openLevel(id) {
     barsBox.innerHTML = "";
     $("sortStatus").innerHTML = "";
   }
+  // 内嵌素材（第 2/4 关：信号灯 / 货单）
+  const emb = $("embedArea");
+  if (current.embed) {
+    emb.classList.remove("hidden");
+    if (emb.getAttribute("src") !== current.embed) emb.setAttribute("src", current.embed);
+  } else {
+    emb.classList.add("hidden");
+    emb.removeAttribute("src");
+  }
   // Console 线索（第 5 关）
   if (current.console) console.log("[ZUA-2026] " + current.console);
   $("textArea").classList.toggle("hidden", current.type !== "text");

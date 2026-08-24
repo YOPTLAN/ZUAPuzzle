@@ -177,6 +177,7 @@ def api_level(request: Request, response: Response, level_id: int):
         "guess": lv.get("guess"),
         "console": lv.get("console"),
         "bars": lv.get("bars"),
+        "embed": lv.get("embed"),
         "viewed_at": viewed_at,
         "server_now": time.time(),
         "hint_delays": list(cfg.HINT_UNLOCK_DELAYS),
