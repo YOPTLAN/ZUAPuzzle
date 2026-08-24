@@ -19,9 +19,15 @@ class Config:
     COOKIE_MAX_AGE: int = 7 * 24 * 3600  # 7 天
 
     # 限流（内存简易限流，多 worker 需换 Redis）
-    RATE_LIMIT_PER_MIN: int = 20
-    RATE_LIMIT_COOLDOWN: int = 60
-    WRONG_ANSWER_COOLDOWN: int = 3
+    RATE_LIMIT_PER_MIN: int = 10      # 单关答案校验：每分钟最多尝试次数
+    RATE_LIMIT_COOLDOWN: int = 60     # 频率统计窗口（秒）
+    WRONG_ANSWER_COOLDOWN: int = 3    # 每次答错后的短冷却（秒）
+    GUESS_RATE_PER_MIN: int = 30      # 猜数关交互频率上限（一局最多 11 次）
+
+    # 会话级惩罚：跨关卡累计答错达上限后整体锁定（防逐关枚举短数字答案）
+    SESSION_MAX_WRONG: int = 20       # 错误次数上限
+    SESSION_WRONG_WINDOW: int = 600   # 错误计数窗口（秒）
+    SESSION_COOLDOWN: int = 600       # 触发上限后的锁定时长（秒）
 
     # 提示解锁延迟（自首次打开关卡起算，单位秒）：提示一 / 提示二 / 提示三
     HINT_UNLOCK_DELAYS: tuple = (300, 900, 1800)
