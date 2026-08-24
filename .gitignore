@@ -22,3 +22,7 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+
+# AI 技能包与本地临时目录
+.skills/
+.tmp/
