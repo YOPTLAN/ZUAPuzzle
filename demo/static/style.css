@@ -341,3 +341,12 @@ footer {
 }
 
 button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none !important; filter: none !important; transform: none !important; }
+
+/* ---------- L10 排序试验场：可拖拽柱状图 ---------- */
+#barsVisual { user-select: none; -webkit-user-select: none; }
+#sortStatus { margin: -6px 0 16px; font-size: 14px; font-family: var(--font-display); }
+.bar { touch-action: none; cursor: grab; }
+.bar.dragging { transition: none; cursor: grabbing; opacity: .92; z-index: 5; box-shadow: 0 0 18px rgba(59, 130, 246, .65); }
+.bar-col.shifting { transition: transform 160ms ease-out; }
+.bar-col:focus-visible { outline: 2px solid var(--color-ring); outline-offset: 3px; border-radius: 6px; }
+.bar-col:focus .bar { box-shadow: 0 0 14px rgba(251, 191, 36, .55); }

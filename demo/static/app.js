@@ -86,16 +86,17 @@ async function openLevel(id) {
   $("lvStory").textContent = current.story;
   $("lvTitle").textContent = `第 ${current.id} 关 · ${current.title}`;
   $("lvPrompt").textContent = current.prompt;
-  // 排序柱状图（第 10 关）
+  // 排序试验场（第 10 关）：可拖拽柱状图
   const barsBox = $("barsVisual");
   if (current.bars) {
     barsBox.classList.remove("hidden");
-    barsBox.innerHTML = current.bars.map(v =>
-      `<div class="bar-col"><div class="bar" style="height:${v * BAR_SCALE}px"></div><div class="bar-val">${v}</div></div>`
-    ).join("");
+    $("sortStatus").classList.remove("hidden");
+    initSortLab(current.bars);
   } else {
     barsBox.classList.add("hidden");
+    $("sortStatus").classList.add("hidden");
     barsBox.innerHTML = "";
+    $("sortStatus").innerHTML = "";
   }
   // Console 线索（第 5 关）
   if (current.console) console.log("[ZUA-2026] " + current.console);
@@ -131,6 +132,103 @@ function updateHintButton() {
     btn.innerHTML = ICONS.bulb + "要提示";
     if (hintGateTimer) { clearInterval(hintGateTimer); hintGateTimer = null; }
   }
+}
+
+/* ---------- 排序试验场：Pointer Events 拖拽（拖 k 格 = k 次相邻交换） ----------
+   性能纪律：动画只用 transform（GPU 合成，零 reflow）；提交重排时才重建 DOM。 */
+function initSortLab(values) {
+  const box = $("barsVisual");
+  const statusEl = $("sortStatus");
+  let arr = values.slice();
+  let moves = 0;
+
+  const isSorted = () => arr.every((v, i) => i === 0 || arr[i - 1] <= v);
+
+  function updateStatus() {
+    statusEl.innerHTML = isSorted()
+      ? `<span class="ok">${ICONS.check}已排好 ✓ 用了 ${moves} 次相邻交换</span>`
+      : `<span class="dim">当前排列 ${arr.join(" ")} · 已用 ${moves} 次相邻交换 · 目标：从小到大</span>`;
+  }
+
+  function render() {
+    box.innerHTML = "";
+    arr.forEach((v, i) => {
+      const col = document.createElement("div");
+      col.className = "bar-col";
+      col.tabIndex = 0;
+      col.setAttribute("role", "button");
+      col.setAttribute("aria-label", `信号柱 ${v}，第 ${i + 1} 位；左右方向键与相邻柱交换`);
+      col.innerHTML = `<div class="bar" style="height:${v * BAR_SCALE}px"></div><div class="bar-val">${v}</div>`;
+      attachDrag(col, i);
+      col.addEventListener("keydown", e => {
+        if (e.key === "ArrowLeft" && i > 0) { doSwap(i, i - 1); e.preventDefault(); }
+        if (e.key === "ArrowRight" && i < arr.length - 1) { doSwap(i, i + 1); e.preventDefault(); }
+      });
+      box.appendChild(col);
+    });
+    updateStatus();
+  }
+
+  function doSwap(i, j) {
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    moves++;
+    render();
+    const c = box.children[j];
+    if (c) c.focus({ preventScroll: true });
+  }
+
+  function attachDrag(col, origIdx) {
+    let dragging = false, pid = null, startX = 0, dx = 0, target = origIdx, pitch = 44;
+    const barEl = col.querySelector(".bar");
+
+    col.addEventListener("pointerdown", e => {
+      if (e.button !== undefined && e.button !== 0) return;
+      dragging = true; pid = e.pointerId; startX = e.clientX; dx = 0; target = origIdx;
+      pitch = box.children.length > 1
+        ? box.children[1].offsetLeft - box.children[0].offsetLeft
+        : 44;
+      try { col.setPointerCapture(pid); } catch (_) {}
+      barEl.classList.add("dragging");
+      e.preventDefault();
+    });
+
+    col.addEventListener("pointermove", e => {
+      if (!dragging) return;
+      dx = e.clientX - startX;
+      target = Math.max(0, Math.min(arr.length - 1, origIdx + Math.round(dx / pitch)));
+      barEl.classList.add("dragging");
+      col.style.transform = `translateX(${dx}px)`;
+      [...box.children].forEach((c, j) => {
+        if (j === origIdx) return;
+        c.style.transform = "";
+        c.classList.remove("shifting");
+        if (origIdx < target && j > origIdx && j <= target) {
+          c.style.transform = `translateX(${-pitch}px)`; c.classList.add("shifting");
+        }
+        if (target < origIdx && j >= target && j < origIdx) {
+          c.style.transform = `translateX(${pitch}px)`; c.classList.add("shifting");
+        }
+      });
+    });
+
+    const drop = () => {
+      if (!dragging) return;
+      dragging = false;
+      try { col.releasePointerCapture(pid); } catch (_) {}
+      [...box.children].forEach(c => { c.style.transform = ""; c.classList.remove("shifting"); });
+      barEl.classList.remove("dragging");
+      if (target !== origIdx) {
+        const [v] = arr.splice(origIdx, 1);
+        arr.splice(target, 0, v);
+        moves += Math.abs(target - origIdx);
+      }
+      render();
+    };
+    col.addEventListener("pointerup", drop);
+    col.addEventListener("pointercancel", drop);
+  }
+
+  render();
 }
 
 /* 文本关 */
