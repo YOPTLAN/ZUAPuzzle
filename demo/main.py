@@ -33,7 +33,14 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="ZUA-2026 黑匣子破译行动", version="0.1.0", lifespan=lifespan)
+app = FastAPI(
+    title="ZUA-2026 黑匣子破译行动",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url=None,        # 关闭接口文档页（不对外暴露接口结构）
+    redoc_url=None,
+    openapi_url=None,
+)
 
 # ---- 简易内存限流（DEMO 够用；多进程/多 worker 时需换 Redis/DB）----
 wrong_cooldown_until = {}            # (token, level_id) -> 冷却截止时间
