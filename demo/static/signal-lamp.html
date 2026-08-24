@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SIGNAL LAMP · ZUA-2026</title>
+<style>
+  body {
+    background: #0B0B10; color: #F8FAFC;
+    font-family: "Fira Code", ui-monospace, Consolas, "Microsoft YaHei", monospace;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 100vh; margin: 0; gap: 18px;
+  }
+  .lamp-shell {
+    width: 150px; height: 150px; border-radius: 50%;
+    border: 1px solid #1E293B; display: grid; place-items: center;
+    background: radial-gradient(circle at 50% 20%, rgba(59,130,246,.08), transparent 65%);
+  }
+  .lamp {
+    width: 84px; height: 84px; border-radius: 50%;
+    background: #16181d; border: 1px solid #23272f;
+    transition: background 60ms linear, box-shadow 60ms linear;
+  }
+  .lamp.on {
+    background: radial-gradient(circle at 40% 35%, #fff7d6, #FBBF24 55%, #b45309);
+    box-shadow: 0 0 42px rgba(251, 191, 36, .85), 0 0 90px rgba(251, 191, 36, .35);
+    border-color: #FBBF24;
+  }
+  .status { font-family: "Share Tech Mono", monospace; letter-spacing: 3px; color: #94A3B8; font-size: 12px; }
+  button {
+    background: transparent; color: #FBBF24; border: 1px solid rgba(251,191,36,.45);
+    padding: 8px 20px; border-radius: 8px; cursor: pointer;
+    font-family: inherit; font-size: 13px;
+  }
+  button:hover { border-color: #FBBF24; box-shadow: 0 0 12px rgba(251,191,36,.25); }
+</style>
+</head>
+<body>
+  <div class="lamp-shell"><div class="lamp" id="lamp"></div></div>
+  <div class="status" id="status">RECEIVING · LOOP</div>
+  <button id="replay">↻ REPLAY</button>
+<script>
+/* 摩斯时序：单位 T；符号间隔 1T，字母间隔 3T，循环间歇 15T */
+const T = 320;
+const CODE = { A:".-", B:"-...", C:"-.-.", D:"-..", E:".", F:"..-.", G:"--.",
+               H:"....", I:"..", J:".---", K:"-.-", L:".-..", M:"--", N:"-.",
+               O:"---", P:".--.", Q:"--.-", R:".-.", S:"...", T:"-",
+               U:"..-", V:"...-", W:".--", X:"-..-", Y:"-.--", Z:"--.." };
+const WORD = "WELCOME";
+let token = 0;
+
+function schedule() {
+  const my = ++token;
+  const lamp = document.getElementById("lamp");
+  const st   = document.getElementById("status");
+  let seq = [];
+  WORD.split("").forEach((ch, li) => {
+    CODE[ch].split("").forEach((s, si) => {
+      seq.push({ on: true,  t: s === "." ? 1 : 3 });
+      if (si < CODE[ch].length - 1) seq.push({ on: false, t: 1 });
+    });
+    if (li < WORD.length - 1) seq.push({ on: false, t: 3 });   // 字母间隔
+  });
+  seq.push({ on: false, t: 15 });                              // 循环间歇
+
+  let i = 0;
+  (function step() {
+    if (my !== token) return;                                   // 已被重播取代
+    const f = seq[i];
+    lamp.classList.toggle("on", f.on);
+    i = (i + 1) % seq.length;
+    setTimeout(step, f.t * T);
+  })();
+}
+
+document.getElementById("replay").addEventListener("click", () => {
+  const s = document.getElementById("status");
+  s.textContent = "REPLAYING";
+  setTimeout(() => s.textContent = "RECEIVING · LOOP", 600);
+  schedule();
+});
+schedule();
+</script>
+</body>
+</html>
