@@ -65,6 +65,31 @@ def init_db():
                 solved_at REAL NOT NULL,
                 PRIMARY KEY(player_id, level_id))"""
         )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS level_views(
+                player_id INTEGER NOT NULL,
+                level_id INTEGER NOT NULL,
+                viewed_at REAL NOT NULL,
+                PRIMARY KEY(player_id, level_id))"""
+        )
+
+
+def mark_level_view(player_id: int, level_id: int):
+    """记录首次打开关卡的时间（用于提示解锁计时），重复打开不覆盖。"""
+    with conn_cm() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO level_views(player_id, level_id, viewed_at) VALUES(?,?,?)",
+            (player_id, level_id, time.time()),
+        )
+
+
+def first_viewed_at(player_id: int, level_id: int):
+    with conn_cm() as conn:
+        row = conn.execute(
+            "SELECT viewed_at FROM level_views WHERE player_id=? AND level_id=?",
+            (player_id, level_id),
+        ).fetchone()
+    return row["viewed_at"] if row else None
 
 
 def get_or_create_player(token: str):

@@ -6,6 +6,8 @@ const BAR_SCALE = 26;  // 柱状图高度缩放因子（px/单位值）
 let LEVELS = [];
 let current = null;      // 当前关卡 payload
 let fragments = [];
+let hintGateTimer = null; // 提示按钮倒计时定时器
+let serverSkew = 0;       // 服务器时钟 - 本地时钟（秒），用于抗本地改时间
 
 /* ---- 内联 SVG 图标（lucide 风格，stroke 继承 currentColor）---- */
 const svg = (paths, cls = "icon-inline") =>
@@ -26,6 +28,7 @@ const navBtns = document.querySelectorAll("nav button");
 function showView(name) {
   Object.entries(views).forEach(([k, el]) => el.classList.toggle("hidden", k !== name));
   navBtns.forEach(b => b.classList.toggle("active", b.dataset.view === name));
+  if (name !== "level" && hintGateTimer) { clearInterval(hintGateTimer); hintGateTimer = null; }
   if (name === "map") loadMap();
   if (name === "rank") loadRank();
 }
@@ -101,7 +104,33 @@ async function openLevel(id) {
   $("checkMsg").textContent = "";
   $("hintMsg").textContent = "";
   if (current.type === "guess") initGuess();
+  serverSkew = (current.server_now || Date.now() / 1000) - Date.now() / 1000;
+  setupHintGate();
   showView("level");
+}
+
+/* 提示时间门禁：提示一需打开题目满 5 分钟才可点（二/三为 15/30 分钟，服务端强校验） */
+function setupHintGate() {
+  if (hintGateTimer) clearInterval(hintGateTimer);
+  $("hintBtn").disabled = true;
+  updateHintButton();
+  hintGateTimer = setInterval(updateHintButton, 1000);
+}
+function updateHintButton() {
+  const btn = $("hintBtn");
+  if (!btn || !current || !current.viewed_at) return;
+  const delays = current.hint_delays || [300, 900, 1800];
+  const need = delays[0];
+  const elapsed = Math.floor(Date.now() / 1000 + serverSkew - current.viewed_at);
+  if (elapsed < need) {
+    const rem = need - elapsed;
+    btn.disabled = true;
+    btn.innerHTML = ICONS.bulb + `要提示 (${Math.floor(rem / 60)}:${String(rem % 60).padStart(2, "0")})`;
+  } else if (btn.disabled) {
+    btn.disabled = false;
+    btn.innerHTML = ICONS.bulb + "要提示";
+    if (hintGateTimer) { clearInterval(hintGateTimer); hintGateTimer = null; }
+  }
 }
 
 /* 文本关 */
@@ -175,6 +204,10 @@ $("hintBtn").addEventListener("click", async () => {
   if (!current) return;
   try {
     const r = await api(`/api/levels/${current.id}/hints`);
+    if (r.locked) {
+      $("hintMsg").innerHTML = `<span class="warn">${ICONS.alert}${r.message}</span>`;
+      return;
+    }
     $("hintMsg").innerHTML = r.hint
       ? `<span class="warn">${ICONS.bulb}提示 ${r.hint_index + 1}：${r.hint}</span>`
       : `<span class="warn">${ICONS.alert}没有更多提示了</span>`;

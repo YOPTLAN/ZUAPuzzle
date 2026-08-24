@@ -23,6 +23,9 @@ class Config:
     RATE_LIMIT_COOLDOWN: int = 60
     WRONG_ANSWER_COOLDOWN: int = 3
 
+    # 提示解锁延迟（自首次打开关卡起算，单位秒）：提示一 / 提示二 / 提示三
+    HINT_UNLOCK_DELAYS: tuple = (300, 900, 1800)
+
     # 数据库与备份
     DATA_DIR: Path = BASE_DIR / "data"
     DB_NAME: str = "puzzle.db"

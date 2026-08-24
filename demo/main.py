@@ -159,15 +159,20 @@ def api_level(request: Request, response: Response, level_id: int):
         return JSONResponse({"detail": "no such level"}, status_code=404)
     if not is_unlocked(player, lv):
         return JSONResponse({"detail": "locked"}, status_code=403)
+    db.mark_level_view(player["id"], lv["id"])
+    viewed_at = db.first_viewed_at(player["id"], lv["id"])
     solved = level_id in db.solved_set(player["id"])
     return {
         "id": lv["id"], "stage": lv["stage"], "title": lv["title"],
         "difficulty": lv["difficulty"], "type": lv["type"],
         "story": lv["story"], "prompt": lv["prompt"],
-        "solved": solved, "hints": lv["hints"],
+        "solved": solved, "hints_count": len(lv["hints"]),
         "guess": lv.get("guess"),
         "console": lv.get("console"),
         "bars": lv.get("bars"),
+        "viewed_at": viewed_at,
+        "server_now": time.time(),
+        "hint_delays": list(cfg.HINT_UNLOCK_DELAYS),
     }
 
 
@@ -256,8 +261,21 @@ def api_hint(request: Request, response: Response, level_id: int):
         return JSONResponse({"detail": "locked"}, status_code=403)
     key = (player["token"], level_id)
     idx = hints_used[key]
-    if idx >= len(lv["hints"]):
+    total_hints = len(lv["hints"])
+    if idx >= total_hints:
         return {"hint": None, "hint_index": idx, "all_used": True}
+    # 时间门禁：以【首次打开关卡】的时刻起算（服务端计时，防改本地时钟）
+    delays = cfg.HINT_UNLOCK_DELAYS
+    first = db.first_viewed_at(player["id"], level_id) or time.time()
+    elapsed = time.time() - first
+    need = delays[idx] if idx < len(delays) else delays[-1]
+    if elapsed < need:
+        wait = int(need - elapsed)
+        return {
+            "hint": None, "hint_index": idx, "locked": True,
+            "wait_seconds": wait,
+            "message": f"提示 {idx + 1} 将在打开本题第 {need // 60} 分钟后解锁，还需等待 {wait} 秒",
+        }
     hint = lv["hints"][idx]
     hints_used[key] = idx + 1
     return {"hint": hint, "hint_index": idx, "all_used": False}

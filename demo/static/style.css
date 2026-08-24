@@ -339,3 +339,5 @@ footer {
   .bar { width: 24px; }
   h2 { font-size: 19px; }
 }
+
+button:disabled { opacity: .45; cursor: not-allowed; box-shadow: none !important; filter: none !important; transform: none !important; }
