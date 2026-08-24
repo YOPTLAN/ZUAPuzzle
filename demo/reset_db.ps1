@@ -37,7 +37,7 @@ conn.execute("VACUUM")
 conn.close()
 print("数据库已清空")
 "@
-python -c $py
+python -X utf8 -c $py
 if ($LASTEXITCODE -ne 0) {
     Write-Host "清空失败：请确认已停止服务进程后重试" -ForegroundColor Red
     exit 1
