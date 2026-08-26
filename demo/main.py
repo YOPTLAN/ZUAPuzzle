@@ -73,7 +73,6 @@ wrong_attempts = defaultdict(list)   # (token, level_id) -> [时间戳]
 guess_times = defaultdict(list)      # token -> 猜数交互 [时间戳]
 session_wrong = defaultdict(list)    # token -> 跨关卡累计错误 [时间戳]
 session_cooldown_until = {}          # token -> 会话级锁定截止时间
-hints_used = defaultdict(int)        # (token, level_id) -> 已看提示数
 
 
 # ---------------- 会话 ----------------
@@ -228,15 +227,19 @@ def api_level(request: Request, response: Response, level_id: int):
         return JSONResponse({"detail": "locked"}, status_code=403)
     db.mark_level_view(player["id"], lv["id"])
     viewed_at = db.first_viewed_at(player["id"], lv["id"])
+    revealed_idx = db.revealed_hint_indices(player["id"], lv["id"])
     solved = level_id in db.solved_set(player["id"])
     return {
         "id": lv["id"], "stage": lv["stage"], "title": lv["title"],
         "difficulty": lv["difficulty"], "type": lv["type"],
         "story": lv["story"], "prompt": lv["prompt"],
         "solved": solved, "hints_count": len(lv["hints"]),
+        "revealed_hints": [{"index": i, "text": lv["hints"][i]}
+                           for i in revealed_idx if i < len(lv["hints"])],
         "guess": lv.get("guess"),
         "console": lv.get("console"),
         "bars": lv.get("bars"),
+        "embed": lv.get("embed"),
         "viewed_at": viewed_at,
         "server_now": time.time(),
         "hint_delays": list(cfg.HINT_UNLOCK_DELAYS),
@@ -331,11 +334,16 @@ def api_hint(request: Request, response: Response, level_id: int):
         return JSONResponse({"detail": "no such level"}, status_code=404)
     if not is_unlocked(player, lv):
         return JSONResponse({"detail": "locked"}, status_code=403)
-    key = (player["token"], level_id)
-    idx = hints_used[key]
+    # 已解锁提示持久化在数据库中（重启不丢）；下一条待解锁提示 = 已解锁数量
+    revealed_idx = db.revealed_hint_indices(player["id"], level_id)
+    idx = len(revealed_idx)
     total_hints = len(lv["hints"])
+    all_texts = [lv["hints"][i] for i in revealed_idx if i < total_hints]
+
     if idx >= total_hints:
-        return {"hint": None, "hint_index": idx, "all_used": True}
+        return {"hint": None, "hint_index": idx, "all_used": True,
+                "revealed_texts": all_texts}
+
     # 时间门禁：以【首次打开关卡】的时刻起算（服务端计时，防改本地时钟）
     delays = cfg.HINT_UNLOCK_DELAYS
     first = db.first_viewed_at(player["id"], level_id) or time.time()
@@ -346,11 +354,16 @@ def api_hint(request: Request, response: Response, level_id: int):
         return {
             "hint": None, "hint_index": idx, "locked": True,
             "wait_seconds": wait,
+            "revealed_texts": all_texts,
             "message": f"提示 {idx + 1} 将在打开本题第 {need // 60} 分钟后解锁，还需等待 {wait} 秒",
         }
-    hint = lv["hints"][idx]
-    hints_used[key] = idx + 1
-    return {"hint": hint, "hint_index": idx, "all_used": False}
+    db.reveal_hint(player["id"], level_id, idx)
+    all_texts.append(lv["hints"][idx])
+    return {
+        "hint": lv["hints"][idx], "hint_index": idx,
+        "all_used": idx + 1 >= total_hints,
+        "revealed_texts": all_texts,
+    }
 
 
 class RankIn(BaseModel):

@@ -72,6 +72,14 @@ def init_db():
                 viewed_at REAL NOT NULL,
                 PRIMARY KEY(player_id, level_id))"""
         )
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS hints_revealed(
+                player_id INTEGER NOT NULL,
+                level_id INTEGER NOT NULL,
+                hint_index INTEGER NOT NULL,
+                revealed_at REAL NOT NULL,
+                PRIMARY KEY(player_id, level_id, hint_index))"""
+        )
 
 
 def mark_level_view(player_id: int, level_id: int):
@@ -90,6 +98,24 @@ def first_viewed_at(player_id: int, level_id: int):
             (player_id, level_id),
         ).fetchone()
     return row["viewed_at"] if row else None
+
+
+def revealed_hint_indices(player_id: int, level_id: int):
+    """已解锁的提示下标（升序）。持久化存储，重启不丢。"""
+    with conn_cm() as conn:
+        rows = conn.execute(
+            "SELECT hint_index FROM hints_revealed WHERE player_id=? AND level_id=? ORDER BY hint_index",
+            (player_id, level_id),
+        ).fetchall()
+    return [r["hint_index"] for r in rows]
+
+
+def reveal_hint(player_id: int, level_id: int, hint_index: int):
+    with conn_cm() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO hints_revealed(player_id, level_id, hint_index, revealed_at) VALUES(?,?,?,?)",
+            (player_id, level_id, hint_index, time.time()),
+        )
 
 
 def get_or_create_player(token: str):
