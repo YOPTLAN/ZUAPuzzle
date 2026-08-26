@@ -1,5 +1,5 @@
 ﻿# -*- mode: pwsh -*-
-# ZUA-2026 Demo 一键启动脚本
+# ZUA-2026 Demo 一键安装脚本（只装环境，不负责启动；启动请用 start-local.bat / start-prod.bat）
 # 用法：在【你自己的终端】（有网的终端，不是受限会话）里执行：
 #   cd demo
 #   powershell -ExecutionPolicy Bypass -File setup.ps1
@@ -9,15 +9,10 @@ $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 # ---- 读取配置（Python 模块）----
-# 注意：$HOST 是 PowerShell 自动变量，绑定地址用 $BIND_HOST 承载
-$cfg = & python -c "import sys; sys.path.insert(0, '.'); from config import config; print('BIND_HOST=' + config.HOST); print('PORT=' + str(config.PORT)); print('PIP_INDEX_URL=' + config.PIP_INDEX_URL)" 2>$null
+$cfg = & python -c "import sys; sys.path.insert(0, '.'); from config import config; print('PIP_INDEX_URL=' + config.PIP_INDEX_URL)" 2>$null
 if ($LASTEXITCODE -ne 0) {
-    $BIND_HOST = "0.0.0.0"
-    $PORT = 8000
     $PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
 } else {
-    $BIND_HOST = ($cfg | Select-String 'BIND_HOST=(.+)').Matches.Groups[1].Value
-    $PORT = ($cfg | Select-String 'PORT=(\d+)').Matches.Groups[1].Value
     $PIP_INDEX_URL = ($cfg | Select-String 'PIP_INDEX_URL=(.+)').Matches.Groups[1].Value
 }
 
@@ -101,16 +96,10 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# ---- 4. 启动 ----
-if (-not (Test-Path $venvPy)) {
-    Write-Host "[!] 虚拟环境异常，找不到: $venvPy"
-    exit 1
-}
+# ---- 4. 完成（启动职责已移交 start-local.bat / start-prod.bat）----
 Write-Host ""
 Write-Host "======================================================"
-Write-Host "  启动成功！"
-Write-Host "  本机测试：   http://127.0.0.1:$PORT"
-Write-Host "  局域网测试： http://<本机IP>:$PORT   （防火墙需放行 $PORT）"
-Write-Host "  按 Ctrl+C 停止"
+Write-Host "  ✅ 安装完成！环境就绪：.venv + 依赖"
+Write-Host "  本地/局域网测试 : .\start-local.bat   （Cookie Secure 关）"
+Write-Host "  对外/内网穿透   : .\start-prod.bat    （Cookie Secure 开）"
 Write-Host "======================================================"
-& "$venvPy" -m uvicorn main:app --host $BIND_HOST --port $PORT

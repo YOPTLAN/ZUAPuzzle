@@ -7,6 +7,7 @@
     uvicorn main:app --host 0.0.0.0 --port 8000
 """
 import hashlib
+import re
 import secrets
 import time
 from collections import defaultdict
@@ -14,6 +15,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -42,10 +44,35 @@ app = FastAPI(
     openapi_url=None,
 )
 
+# ---- 安全响应头（XSS 纵深防御 + 基础加固；上线独立域名后可再加 HSTS）----
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    # 说明：style-src 含 'unsafe-inline' 是因前端用内联 style 属性渲染动态柱状图；
+    # 防 XSS 核心的 script-src 保持严格 'self'（站点无内联脚本）
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; "
+        "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
+        "font-src 'self' fonts.gstatic.com; img-src 'self'; connect-src 'self'; "
+        "object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
+# ---- 统一包装参数校验错误，避免泄露 Pydantic/框架特征 ----
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse({"detail": "参数错误"}, status_code=422)
+
+
 # ---- 简易内存限流（DEMO 够用；多进程/多 worker 时需换 Redis/DB）----
 wrong_cooldown_until = {}            # (token, level_id) -> 冷却截止时间
 wrong_attempts = defaultdict(list)   # (token, level_id) -> [时间戳]
-guess_counts = defaultdict(int)      # token -> 交互关已用猜测次数
+guess_times = defaultdict(list)      # token -> 猜数交互 [时间戳]
+session_wrong = defaultdict(list)    # token -> 跨关卡累计错误 [时间戳]
+session_cooldown_until = {}          # token -> 会话级锁定截止时间
 hints_used = defaultdict(int)        # (token, level_id) -> 已看提示数
 
 
@@ -54,7 +81,13 @@ def ensure_player(request: Request, response: Response):
     token = request.cookies.get(cfg.COOKIE_NAME)
     if not token:
         token = secrets.token_hex(16)
-        response.set_cookie(cfg.COOKIE_NAME, token, max_age=cfg.COOKIE_MAX_AGE)
+        # HttpOnly 禁止 JS 读取（防 XSS 窃取会话）；SameSite=Lax 防 CSRF；
+        # Secure 仅 HTTPS 传输——由启动模式决定（见 config.COOKIE_SECURE）
+        response.set_cookie(
+            cfg.COOKIE_NAME, token,
+            max_age=cfg.COOKIE_MAX_AGE,
+            httponly=True, secure=cfg.COOKIE_SECURE, samesite="lax",
+        )
     return db.get_or_create_player(token)
 
 
@@ -97,17 +130,44 @@ def public_level(level: dict, solved: bool, unlocked: bool) -> dict:
     return d
 
 
+def _freq_wait(stamps: list, limit: int, window: int) -> int:
+    """滑动窗口频率检查：返回还需等待秒数；0 表示放行。"""
+    now = time.time()
+    recent = [t for t in stamps if now - t < window]
+    stamps[:] = recent
+    if len(recent) >= limit:
+        return window - int(now - recent[0]) + 1
+    return 0
+
+
 def rate_limited(token: str, level_id: int) -> int:
-    """返回还需等待秒数；0 表示可以继续尝试。"""
+    """单关答案校验限速：返回还需等待秒数；0 表示可以继续尝试。"""
     key = (token, level_id)
     if wrong_cooldown_until.get(key, 0) > time.time():
         return int(wrong_cooldown_until[key] - time.time()) + 1
-    now = time.time()
-    recent = [t for t in wrong_attempts[key] if now - t < cfg.RATE_LIMIT_COOLDOWN]
-    wrong_attempts[key] = recent
-    if len(recent) >= cfg.RATE_LIMIT_PER_MIN:  # 每分钟最多 N 次
-        return cfg.RATE_LIMIT_COOLDOWN - int(now - recent[0])
+    return _freq_wait(wrong_attempts[key], cfg.RATE_LIMIT_PER_MIN,
+                      cfg.RATE_LIMIT_COOLDOWN)
+
+
+def session_limited(token: str) -> int:
+    """会话级惩罚：跨关卡累计答错达上限后整体锁定一段时间。"""
+    if session_cooldown_until.get(token, 0) > time.time():
+        return int(session_cooldown_until[token] - time.time()) + 1
+    wait = _freq_wait(session_wrong[token], cfg.SESSION_MAX_WRONG,
+                      cfg.SESSION_WRONG_WINDOW)
+    if wait:
+        until = time.time() + cfg.SESSION_COOLDOWN
+        session_cooldown_until[token] = until
+        return cfg.SESSION_COOLDOWN
     return 0
+
+
+def record_wrong(token: str, level_id: int):
+    """记录一次答错：触发单关短冷却 + 计入会话级累计。"""
+    now = time.time()
+    wrong_cooldown_until[(token, level_id)] = now + cfg.WRONG_ANSWER_COOLDOWN
+    wrong_attempts[(token, level_id)].append(now)
+    session_wrong[token].append(now)
 
 
 # ---------------- 页面 ----------------
@@ -198,6 +258,8 @@ def api_check(request: Request, response: Response, level_id: int, body: CheckIn
     if level_id in db.solved_set(player["id"]):
         return {"correct": True, "already": True, "message": "这关你已经通过啦"}
     wait = rate_limited(player["token"], level_id)
+    if not wait:
+        wait = session_limited(player["token"])
     if wait:
         return JSONResponse(
             {"correct": False, "message": f"尝试太频繁，请 {wait} 秒后再试",
@@ -213,8 +275,7 @@ def api_check(request: Request, response: Response, level_id: int, body: CheckIn
             "solved_count": len(solved),
             "done": len(solved) == total_levels(),
         }
-    wrong_cooldown_until[(player["token"], level_id)] = time.time() + cfg.WRONG_ANSWER_COOLDOWN
-    wrong_attempts[(player["token"], level_id)].append(time.time())
+    record_wrong(player["token"], level_id)
     return {"correct": False, "message": f"答案不对，再想想（{cfg.WRONG_ANSWER_COOLDOWN} 秒后可重试）", "cooldown": cfg.WRONG_ANSWER_COOLDOWN}
 
 
@@ -236,8 +297,12 @@ def api_guess(request: Request, response: Response, level_id: int, body: GuessIn
     if not (g["lo"] <= body.guess <= g["hi"]):
         return JSONResponse({"detail": "超出范围"}, status_code=400)
     token = player["token"]
-    guess_counts[token] += 1
-    used = guess_counts[token]
+    wait = _freq_wait(guess_times[token], cfg.GUESS_RATE_PER_MIN, 60)
+    if wait:
+        return JSONResponse(
+            {"detail": f"猜测太频繁，请 {wait} 秒后再试"}, status_code=429)
+    guess_times[token].append(time.time())
+    used = len(guess_times[token])
     if used > g["max_guesses"]:
         return JSONResponse(
             {"result": "fail",
@@ -292,12 +357,24 @@ class RankIn(BaseModel):
     nickname: str
 
 
+# 昵称白名单：仅中英文、数字、下划线（防存储型 XSS，服务端治本）
+NICKNAME_PATTERN = re.compile(r"^[a-zA-Z0-9\u4e00-\u9fff_]{1,24}$")
+
+
 @app.post("/api/rank/register")
 def api_rank_register(request: Request, response: Response, body: RankIn):
     player = ensure_player(request, response)
-    nick = body.nickname.strip()[:cfg.NICKNAME_MAX_LEN]
+    if player["nickname"]:
+        # 每 session 仅可登记一次，防反复改名刷屏/抢注
+        return JSONResponse({"detail": "该会话已登记过呼号，无法重复登记"},
+                            status_code=409)
+    nick = body.nickname.strip()
     if not nick:
         return JSONResponse({"detail": "昵称不能为空"}, status_code=400)
+    if len(nick) > cfg.NICKNAME_MAX_LEN or not NICKNAME_PATTERN.fullmatch(nick):
+        return JSONResponse(
+            {"detail": "昵称仅支持中文、英文、数字和下划线，长度 1~24"},
+            status_code=400)
     db.set_nickname(player["id"], nick)
     return {"ok": True, "nickname": nick}
 

@@ -224,13 +224,26 @@ async function loadRank() {
     box.innerHTML = `<p class="dim">// 尚无通关记录，等第一位黑匣子破译师出现…</p>`;
     return;
   }
-  box.innerHTML = `<table class="rank">
-    <thead><tr><th>#</th><th>CALLSIGN / 昵称</th><th>通关时间</th></tr></thead>
-    <tbody>` +
-    r.rank.map(x =>
-      `<tr class="${x.me ? "me" : ""}"><td class="${x.rank === 1 ? "rk-1" : ""}">${String(x.rank).padStart(2, "0")}</td><td>${x.nickname}</td><td>${fmt(x.finished_at)}</td></tr>`
-    ).join("") +
-    `</tbody></table>`;
+  /* 安全：nickname 为用户可控输入，一律经 textContent 渲染，禁止 innerHTML 拼接 */
+  const table = document.createElement("table");
+  table.className = "rank";
+  table.innerHTML = `<thead><tr><th>#</th><th>CALLSIGN / 昵称</th><th>通关时间</th></tr></thead>`;
+  const tbody = document.createElement("tbody");
+  r.rank.forEach(x => {
+    const tr = document.createElement("tr");
+    if (x.me) tr.className = "me";
+    const tdRank = document.createElement("td");
+    if (x.rank === 1) tdRank.className = "rk-1";
+    tdRank.textContent = String(x.rank).padStart(2, "0");
+    const tdNick = document.createElement("td");
+    tdNick.textContent = x.nickname;   // 用户输入只走 textContent
+    const tdTime = document.createElement("td");
+    tdTime.textContent = fmt(x.finished_at);
+    tr.append(tdRank, tdNick, tdTime);
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  box.replaceChildren(table);
 }
 function fmt(ts) {
   const d = new Date(ts * 1000);
@@ -241,13 +254,18 @@ function fmt(ts) {
 function showFinish() {
   $("checkMsg").innerHTML =
     `<span class="ok">${ICONS.trophy}黑匣子完全破解！登记呼号，登上排行榜：</span>
-    <input type="text" id="nickInput" placeholder="昵称 / 呼号（最多24字）" style="margin-top:10px">
-    <button id="nickBtn" class="btn btn-primary" style="margin-top:10px">登记上榜单</button>`;
+    <input type="text" id="nickInput" maxlength="24" placeholder="昵称 / 呼号（中文、英文、数字、下划线）" style="margin-top:10px">
+    <button id="nickBtn" class="btn btn-primary" style="margin-top:10px">登记上榜单</button>
+    <div id="nickMsg"></div>`;
   $("nickBtn").addEventListener("click", async () => {
     const nick = $("nickInput").value.trim();
     if (!nick) return;
-    await api("/api/rank/register", { method: "POST", body: JSON.stringify({ nickname: nick }) });
-    showView("rank");
+    try {
+      await api("/api/rank/register", { method: "POST", body: JSON.stringify({ nickname: nick }) });
+      showView("rank");
+    } catch (e) {
+      $("nickMsg").innerHTML = `<span class="err">${ICONS.alert}${e.message}</span>`;
+    }
   });
 }
 
