@@ -44,19 +44,26 @@ app = FastAPI(
     openapi_url=None,
 )
 
+# ---- 可内嵌素材页（同源 iframe 使用）：白名单见 config.EMBEDDABLE_STATIC_HTML ----
+
+
 # ---- 安全响应头（XSS 纵深防御 + 基础加固；上线独立域名后可再加 HSTS）----
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
+    path = request.url.path
+    embeddable = path in cfg.EMBEDDABLE_STATIC_HTML
+    frame_ancestors = "'self'" if embeddable else "'none'"
     # 说明：style-src 含 'unsafe-inline' 是因前端用内联 style 属性渲染动态柱状图；
-    # 防 XSS 核心的 script-src 保持严格 'self'（站点无内联脚本）
+    # 防 XSS 核心的 script-src 保持严格 'self'（站点脚本全部外置，无内联脚本）
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; script-src 'self'; "
         "style-src 'self' 'unsafe-inline' fonts.googleapis.com; "
         "font-src 'self' fonts.gstatic.com; img-src 'self'; connect-src 'self'; "
-        "object-src 'none'; base-uri 'self'; frame-ancestors 'none'")
+        f"object-src 'none'; base-uri 'self'; frame-ancestors {frame_ancestors}")
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
+    if not embeddable:
+        response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
 

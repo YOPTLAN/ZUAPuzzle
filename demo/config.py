@@ -35,6 +35,13 @@ class Config:
     # 提示解锁延迟（自首次打开关卡起算，单位秒）：提示一 / 提示二 / 提示三
     HINT_UNLOCK_DELAYS: tuple = (300, 900, 1800)
 
+    # 可内嵌素材白名单（同源 iframe）：新增可内嵌页面时在此追加路径，
+    # 中间件会对其放行 frame-ancestors 'self' 并省略 X-Frame-Options
+    EMBEDDABLE_STATIC_HTML: tuple = (
+        "/static/signal-lamp.html",
+        "/static/cargo-note.html",
+    )
+
     # 数据库与备份
     DATA_DIR: Path = BASE_DIR / "data"
     DB_NAME: str = "puzzle.db"
