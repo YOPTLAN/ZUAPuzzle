@@ -1,5 +1,5 @@
 ﻿# ZUA-2026 一键清库脚本（上线前清理测试残留用）
-# 功能：自动备份当前数据库到 data\backup\，然后清空玩家/通关/浏览记录
+# 功能：自动备份当前数据库到 data\backup\，然后清空玩家/通关/浏览/提示记录
 # 注意：运行前请先停止服务进程（start-local.bat / start-prod.bat），否则数据库可能被占用
 # 用法：.\reset_db.ps1
 $ErrorActionPreference = "Stop"
@@ -24,20 +24,25 @@ Copy-Item -LiteralPath $dbPath -Destination $backupPath
 Write-Host "[1/2] 已备份数据库 -> $backupPath" -ForegroundColor Green
 
 # 2. 清空业务表（保留表结构；如需彻底重建可直接删除整个 data 目录）
+#    注意：下面 Python 代码里一律用单引号——Windows PowerShell 5.1 把字符串传给
+#    外部程序时会吞掉内嵌双引号（旧版 r"$dbPath" 被拆成 rC:\... 导致 SyntaxError）。
 $py = @"
 import sqlite3
-conn = sqlite3.connect(r"$dbPath")
+conn = sqlite3.connect(r'$dbPath')
 cur = conn.cursor()
-for table in ("solves", "level_views", "players"):
-    n = cur.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-    cur.execute(f"DELETE FROM {table}")
-    print(f"  已清空 {table}: {n} 行")
+for table in ('solves', 'level_views', 'players', 'hints_revealed'):
+    n = cur.execute('SELECT COUNT(*) FROM ' + table).fetchone()[0]
+    cur.execute('DELETE FROM ' + table)
+    print('  cleared ' + table + ': ' + str(n) + ' rows')
 conn.commit()
-conn.execute("VACUUM")
+conn.execute('VACUUM')
 conn.close()
-print("数据库已清空")
+print('database cleared')
 "@
-python -X utf8 -c $py
+# 优先用项目自带的 venv Python（必定存在），否则退回系统 python
+$pyExe = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $pyExe)) { $pyExe = "python" }
+& $pyExe -X utf8 -c $py
 if ($LASTEXITCODE -ne 0) {
     Write-Host "清空失败：请确认已停止服务进程后重试" -ForegroundColor Red
     exit 1
