@@ -9,7 +9,7 @@
 ## 1. 项目是什么
 
 郑州航空工业管理学院计算机学院"ZUA-2026 新生网页解密活动"。
-新生通过网页闯关破译"失联无人机黑匣子"的 15 关谜题，限时一周。
+新生通过网页闯关破译"失联无人机黑匣子"的 14 关谜题，限时一周。
 **当前状态：完整可玩，main 分支为唯一事实源**（本地与远端已同步）。
 
 ## 2. 快速上手（开发机 Windows）
@@ -30,7 +30,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1   # 仅首次：建 .venv + �
 | 文件 | 职责 |
 |---|---|
 | `demo/main.py` | FastAPI：会话、解锁门禁、答案校验、限流/会话锁定、提示门禁、排行、安全头中间件 |
-| `demo/levels.py` | ⚠️ 15 关定义：题干 `prompt`、答案 `answers`、提示 `hints`、碎片 `fragment`、内嵌 `embed`、交互 `guess`/`bars`/`console` |
+| `demo/levels.py` | ⚠️ 14 关定义：题干 `prompt`、答案 `answers`、提示 `hints`、碎片 `fragment`、内嵌 `embed`、交互 `guess`/`bars`/`console`；教学代码 `code`（10~13，通关后下发）；另含主线外**附加关**（`extra: True`，见第 4 节） |
 | `demo/db.py` | SQLite：players / solves / level_views / hints_revealed 四张表 |
 | `demo/config.py` | 统一配置：PORT、HINT_UNLOCK_DELAYS、EMBEDDABLE_STATIC_HTML、限流参数、COOKIE_SECURE |
 | `demo/static/` | 前端（index.html / style.css / app.js）+ 关卡素材页（signal-lamp.html、cargo-note.html、plaza.svg、js/） |
@@ -39,6 +39,8 @@ powershell -ExecutionPolicy Bypass -File setup.ps1   # 仅首次：建 .venv + �
 ## 4. 核心机制（改代码前必读）
 
 - **顺序解锁**：第 N 关需前 N−1 关全部 solved；未解锁 GET 返回 403；碎片按 `config.FRAGMENT_LEVEL_RANGE` 拼接为终极答案（服务端动态计算，改碎片=改终极答案）
+- **附加关（extra）**：主线外可选挑战（现为「10（附加题）· 排序实验室·附加挑战」，id=-10）。规则：`extra: True` 不计碎片链/通关进度/排行榜；`requires: 10` 表示通过第 1~10 关后解锁（主线关不需要该字段）；id 可取主线外的任意整数（如 -10 / 102，路由按 Pydantic 转换、负数也可用），前端展示用 `label`（如 "10（附加题）"）；可带 `bars` 等交互字段；答案仍走 `/check` 接口并受同样限流；`total_levels()`/`all_regular_solved()` 只数常规关，排行榜 SQL 按常规关 **id 白名单**过滤（不能写 `level_id <= 15`——负数附加关 id 会混入）。⚠️ **附加关无 `fragment` 字段**——`public_level`/`api_check`/`api_guess`/前端必须全部容忍缺失（曾因漏改 `public_level` 导致通关附加关后 `/api/levels` KeyError 500，全站航线图挂掉）
+- **通关教学代码**：第 10~13 关的 `code` 字段是 C 语言参考实现（内含本关真实数据，编译运行即得本关答案），仅在该关 solved 后随 `/api/levels/{id}` 与 `/check` 下发（未通关为 None，防泄题解法）；前端 `<details id="codePanel">` 折叠展示、通关瞬间自动展开，且带 code 的关卡**通关后不自动跳下一关**（停留读代码）。改代码字段后必须 gcc 实测：`.tmp/verify_code_teaching.py`（编译运行四段代码并断言输出=答案）
 - **提示系统**：解锁记录持久化在 `hints_revealed` 表；第 k 条提示需 `HINT_UNLOCK_DELAYS[k]` 秒（自首次打开关卡 `level_views.viewed_at` 起算，服务端计时）；前端 `renderHintList` 常驻显示，刷新/重启不丢
 - **内嵌素材**：`levels.py` 的 `embed` 字段 → 前端 iframe 渲染；**素材路径必须在 `config.EMBEDDABLE_STATIC_HTML` 白名单内**（否则被安全头拦截报 ERR_BLOCKED_BY_RESPONSE）；素材页脚本一律外置 .js（CSP `script-src 'self'` 禁内联）
 - **安全**：答案只存服务端；昵称正则白名单 + 一次性登记 + textContent 渲染（防 XSS）；答错单关冷却 + 会话级累计锁定；CSP/XFO 头全局，白名单页放行同源 frame；/docs 已关闭
@@ -56,19 +58,19 @@ curl.exe -b ck.txt -c ck.txt -H "Content-Type: application/json" -d @b.json http
 # 未解锁关卡应 403：curl.exe -o NUL -w "%{http_code}" http://127.0.0.1:8000/api/levels/5
 ```
 - 提示时间门禁测试：先 GET 打开关卡，再 `UPDATE level_views SET viewed_at=viewed_at-4000 WHERE player_id=(SELECT MAX(id) FROM players)` 回拨模拟 5/15/30 分钟已过
-- 改完代码回归清单：L1 通关 → L2 内嵌灯可见且 welcome 可过 → 提示逐条解锁且重启后仍在 → 安全头正确（素材页 `frame-ancestors 'self'`、首页 DENY）→ 15 关总数
+- 改完代码回归清单：L1 通关 → L2 内嵌灯可见且 welcome 可过 → 提示逐条解锁且重启后仍在 → 安全头正确（素材页 `frame-ancestors 'self'`、首页 DENY）→ 常规 14 关（`/api/levels` 含附加关共 15 条，`extra=true` 仅「10（附加题）」；**通关附加关后再刷 /api/levels 不得 500**）
 
 ## 6. 维护红线（不可妥协）
 
 1. **改 `levels.py` 的题面/答案/提示，必须同步 `answer.md`**（本地文件，同步后无需提交）
 2. 新增内嵌素材页四步：放 `static/` → 加进 `config.EMBEDDABLE_STATIC_HTML` → JS 外置 → 同步 answer.md
 3. 编码类题目（摩斯/Base64/二进制）改动后**必须用程序实测解码**一遍（本项目曾因摩斯码漏点翻车）
-4. 答案空间必须大到无法在线穷举（L12 答案 0~9 为已知隐患，改版建议：问循环节长度 60）
+4. 答案空间必须大到无法在线穷举（反例：原 L12 斐波那契个位仅 0~9，2026-08-29 已删除该关，此后各关答案均为两位数及以上）
 5. `data/` 与 `answer.md` 不入 git；正式活动期间数据库每日异机备份
 
 ## 7. 已知问题与待办（正式版）
 
-- [ ] L12 答案空间仅 0~9，可被穷举（限流只能拖慢）
+- [x] 原 L12（斐波那契的尾巴，答案 0~9 可穷举）已于 2026-08-29 删除；其后关卡顺位前移（现 14 关），第 11 关碎片改 `26` 使终极答案保持 `zuawelcome26go` 不变
 - [ ] 终极题仍是"碎片拼接"占位，正式版替换为 校史年份/社团暗号 + 转换逻辑（levels.py 已留注释位）
 - [ ] 提示/限流为内存态，多 worker 需 Redis
 - [ ] 正式部署：2C2G 服务器 + Nginx + 域名证书 + `start-prod.bat` + 每日备份 cron
