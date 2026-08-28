@@ -54,8 +54,8 @@ class Config:
     TOKEN_HASH_CHARS: int = 8  # 取 token sha256 前 N 字符做确定性种子
 
     # 关卡元数据
-    FINAL_LEVEL_ID: int = 15
-    FRAGMENT_LEVEL_RANGE: tuple = (1, 14)  # 含首含尾
+    FINAL_LEVEL_ID: int = 14
+    FRAGMENT_LEVEL_RANGE: tuple = (1, 13)  # 含首含尾（原第 12 关已删，2026-08-29）
 
     # Python 环境与依赖安装（setup.ps1 运行时动态检测，不预设版本）
     PIP_INDEX_URL: str = "https://pypi.tuna.tsinghua.edu.cn/simple"
