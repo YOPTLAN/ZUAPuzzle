@@ -22,7 +22,8 @@ from pydantic import BaseModel
 
 import config
 import db
-from levels import LEVELS, get_level, total_levels
+from levels import (LEVELS, all_regular_solved, get_level, regular_level_ids,
+                    total_levels)
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -113,11 +114,13 @@ def normalize(ans: str) -> str:
 
 
 def is_unlocked(player, level: dict) -> bool:
-    """顺序解锁：第 1 关永远可玩，其余要求前面全部通过。"""
+    """顺序解锁：第 1 关永远可玩，其余要求前面全部通过。
+    附加关（extra）按 requires 指定的前置关解锁：requires=10 → 需第 1~10 关全通过。"""
     if level["id"] == 1:
         return True
+    need = level.get("requires", level["id"] - 1)
     solved = db.solved_set(player["id"])
-    return all(pid in solved for pid in range(1, level["id"]))
+    return all(pid in solved for pid in range(1, need + 1))
 
 
 def public_level(level: dict, solved: bool, unlocked: bool) -> dict:
@@ -130,9 +133,13 @@ def public_level(level: dict, solved: bool, unlocked: bool) -> dict:
         "solved": solved,
         "unlocked": unlocked,
         "guess": level.get("guess"),
+        "extra": bool(level.get("extra")),
     }
-    if solved:  # 已通关才可见碎片，前端据此重建碎片收集
-        d["fragment"] = level["fragment"]
+    if level.get("label"):  # 附加关展示编号（如 "10（附加题）"）
+        d["label"] = level["label"]
+    # ⚠️ 附加关没有 fragment 字段，必须容忍缺失（见 levels.py 附加关规范）
+    if solved and "fragment" in level:
+        d["fragment"] = level["fragment"]  # 已通关才可见碎片，前端据此重建碎片收集
     return d
 
 
@@ -241,12 +248,15 @@ def api_level(request: Request, response: Response, level_id: int):
         "difficulty": lv["difficulty"], "type": lv["type"],
         "story": lv["story"], "prompt": lv["prompt"],
         "solved": solved, "hints_count": len(lv["hints"]),
+        "label": lv.get("label"),
         "revealed_hints": [{"index": i, "text": lv["hints"][i]}
                            for i in revealed_idx if i < len(lv["hints"])],
         "guess": lv.get("guess"),
         "console": lv.get("console"),
         "bars": lv.get("bars"),
         "embed": lv.get("embed"),
+        # 教学代码（C 参考实现）只在通关后下发，未通关恒为 None（防泄题解法）
+        "code": lv.get("code") if solved else None,
         "viewed_at": viewed_at,
         "server_now": time.time(),
         "hint_delays": list(cfg.HINT_UNLOCK_DELAYS),
@@ -280,10 +290,11 @@ def api_check(request: Request, response: Response, level_id: int, body: CheckIn
         solved = db.solved_set(player["id"])
         return {
             "correct": True,
-            "fragment": lv["fragment"],
-            "fragment_hint": lv["fragment_hint"],
+            "fragment": lv.get("fragment"),
+            "fragment_hint": lv.get("fragment_hint"),
+            "code": lv.get("code"),
             "solved_count": len(solved),
-            "done": len(solved) == total_levels(),
+            "done": all_regular_solved(solved),
         }
     record_wrong(player["token"], level_id)
     return {"correct": False, "message": f"答案不对，再想想（{cfg.WRONG_ANSWER_COOLDOWN} 秒后可重试）", "cooldown": cfg.WRONG_ANSWER_COOLDOWN}
@@ -326,8 +337,9 @@ def api_guess(request: Request, response: Response, level_id: int, body: GuessIn
         solved = db.solved_set(player["id"])
         return {
             "result": "correct", "solved": True, "used": used,
-            "fragment": lv["fragment"], "fragment_hint": lv["fragment_hint"],
-            "solved_count": len(solved), "done": len(solved) == total_levels(),
+            "fragment": lv.get("fragment"), "fragment_hint": lv.get("fragment_hint"),
+            "code": lv.get("code"),
+            "solved_count": len(solved), "done": all_regular_solved(solved),
         }
     return {"result": "higher" if body.guess < target else "lower",
             "used": used, "max": g["max_guesses"]}
@@ -402,7 +414,8 @@ def api_rank_register(request: Request, response: Response, body: RankIn):
 @app.get("/api/rank")
 def api_rank(request: Request, response: Response):
     player = ensure_player(request, response)
-    rows = db.finished_rank(total_levels())
+    # 排行榜只统计主线常规关（按 id 白名单，附加关无论什么 id 都不参与）
+    rows = db.finished_rank(total_levels(), regular_level_ids())
     me_id = player["id"]
     rank = []
     for i, r in enumerate(rows, 1):
