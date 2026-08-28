@@ -151,15 +151,18 @@ def set_nickname(player_id: int, nickname: str):
         conn.execute("UPDATE players SET nickname=? WHERE id=?", (nickname, player_id))
 
 
-def finished_rank(total: int):
-    """已通关玩家，按通关时间升序（先通关的排前面）。"""
+def finished_rank(total: int, level_ids):
+    """已通关玩家（只统计传入的常规关 id 集合，附加关不参与），
+    按通关时间升序（先通关的排前面）。"""
+    marks = ",".join("?" * len(level_ids))
     with conn_cm() as conn:
         rows = conn.execute(
-            """SELECT p.id, p.nickname, COUNT(s.level_id) AS solved,
+            f"""SELECT p.id, p.nickname, COUNT(s.level_id) AS solved,
                       MAX(s.solved_at) AS finished_at
                FROM players p JOIN solves s ON s.player_id = p.id
+                                AND s.level_id IN ({marks})
                GROUP BY p.id HAVING solved = ?
                ORDER BY finished_at ASC""",
-            (total,),
+            (*level_ids, total),
         ).fetchall()
     return [dict(r) for r in rows]

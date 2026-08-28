@@ -66,8 +66,8 @@ async function loadMap() {
     el.innerHTML = `
       <div>
         <span class="st-icon-wrap">${icon.replace('class="icon-inline"', 'class="st-icon"')}</span>
-        <b>第 ${lv.id} 关 · ${lv.title}</b>
-        <span class="meta">　难度 ${lv.difficulty}</span>
+        <b>第 ${lv.label || lv.id} 关 · ${lv.title}</b>
+        <span class="meta">　难度 ${lv.difficulty}${lv.extra ? " · 附加题（不计碎片/排行）" : ""}</span>
       </div>
       ${lv.solved && lv.fragment ? `<div class="frag">碎片 ${lv.fragment}</div>` : ""}`;
     if (lv.unlocked) el.addEventListener("click", () => openLevel(lv.id));
@@ -84,7 +84,7 @@ async function openLevel(id) {
     return;
   }
   $("lvStory").textContent = current.story;
-  $("lvTitle").textContent = `第 ${current.id} 关 · ${current.title}`;
+  $("lvTitle").textContent = `第 ${current.label || current.id} 关 · ${current.title}`;
   $("lvPrompt").textContent = current.prompt;
   // 排序试验场（第 10 关）：可拖拽柱状图
   const barsBox = $("barsVisual");
@@ -114,6 +114,7 @@ async function openLevel(id) {
   $("checkMsg").textContent = "";
   renderHintList((current.revealed_hints || []).map(h => h.text));
   $("hintMsg").textContent = "";
+  renderCode(current.code);   // 已通关的算法关：折叠展示 C 参考实现
   if (current.type === "guess") initGuess();
   serverSkew = (current.server_now || Date.now() / 1000) - Date.now() / 1000;
   setupHintGate();
@@ -149,6 +150,8 @@ function updateHintButton() {
 function initSortLab(values) {
   const box = $("barsVisual");
   const statusEl = $("sortStatus");
+  // 柱高自适应：附加谱面元素多、数值大，压缩缩放因子防止溢出（L10 行为不变）
+  const scale = Math.min(BAR_SCALE, Math.floor(240 / Math.max(...values)));
   let arr = values.slice();
   let moves = 0;
 
@@ -168,7 +171,7 @@ function initSortLab(values) {
       col.tabIndex = 0;
       col.setAttribute("role", "button");
       col.setAttribute("aria-label", `信号柱 ${v}，第 ${i + 1} 位；左右方向键与相邻柱交换`);
-      col.innerHTML = `<div class="bar" style="height:${v * BAR_SCALE}px"></div><div class="bar-val">${v}</div>`;
+      col.innerHTML = `<div class="bar" style="height:${v * scale}px"></div><div class="bar-val">${v}</div>`;
       attachDrag(col, i);
       col.addEventListener("keydown", e => {
         if (e.key === "ArrowLeft" && i > 0) { doSwap(i, i - 1); e.preventDefault(); }
@@ -250,13 +253,20 @@ $("submitBtn").addEventListener("click", async () => {
       method: "POST", body: JSON.stringify({ answer: ans }),
     });
     if (r.correct) {
+      // 附加关（extra）没有碎片：文案不同，且不自动跳下一关
       $("checkMsg").innerHTML =
-        `<span class="ok">${ICONS.check}正确！获得碎片【${r.fragment}】` +
+        `<span class="ok">${ICONS.check}正确！` +
+        (r.fragment ? `获得碎片【${r.fragment}】` : "附加挑战完成！") +
+        (r.code ? " · 参考代码已解锁，见下方" : "") +
         (r.done ? " —— 黑匣子已完整破解！" : "") + `</span>`;
-      fragments.push(r.fragment);
-      await loadMap();
-      if (r.done) { showFinish(); return; }
-      setTimeout(() => { openLevel(current.id + 1); $("answerInput").value = ""; }, 900);
+      if (r.code) renderCode(r.code, true);   // 算法关（10~14）：停留本页读参考代码
+      if (r.fragment) {
+        fragments.push(r.fragment);
+        await loadMap();
+        if (r.done) { showFinish(); return; }
+        // 带 code 的关卡不自动跳关，读完代码后从航线图进入下一关
+        if (!r.code) setTimeout(() => { openLevel(current.id + 1); $("answerInput").value = ""; }, 900);
+      }
     } else {
       $("checkMsg").innerHTML = `<span class="err">${ICONS.x}${r.message || "答案不对"}</span>`;
     }
@@ -290,6 +300,7 @@ $("guessBtn").addEventListener("click", async () => {
       guessHistory.push({ text: `${v} ✓`, cls: "log-hit" });
       renderGuessHistory();
       $("guessInfo").textContent = `猜中了！用了 ${r.used} 次。获得碎片【${r.fragment}】`;
+      if (r.code) renderCode(r.code, true);
       fragments.push(r.fragment);
       await loadMap();
       if (r.done) { showFinish(); return; }
@@ -313,6 +324,23 @@ function renderHintList(texts) {
   box.innerHTML = (texts || []).map((t, i) =>
     `<div class="hint-item">${ICONS.bulb}<b>提示 ${i + 1}</b>：${t}</div>`
   ).join("");
+}
+
+/* ---------- 通关参考代码（C 语言）----------
+   服务端仅在该关通关后下发 code（未通关为 null）；
+   textContent 原样渲染，天然防注入。autoOpen=通关瞬间自动展开。 */
+function renderCode(code, autoOpen = false) {
+  const panel = $("codePanel");
+  if (!panel) return;   // 旧缓存页面可能没有该元素，直接跳过
+  if (!code) {
+    panel.classList.add("hidden");
+    panel.open = false;
+    $("codeBlock").textContent = "";
+    return;
+  }
+  panel.classList.remove("hidden");
+  $("codeBlock").textContent = code;
+  panel.open = !!autoOpen;
 }
 
 $("hintBtn").addEventListener("click", async () => {
