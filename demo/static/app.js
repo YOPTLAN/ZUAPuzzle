@@ -259,13 +259,23 @@ $("submitBtn").addEventListener("click", async () => {
         (r.fragment ? `获得碎片【${r.fragment}】` : "附加挑战完成！") +
         (r.code ? " · 参考代码已解锁，见下方" : "") +
         (r.done ? " —— 黑匣子已完整破解！" : "") + `</span>`;
-      if (r.code) renderCode(r.code, true);   // 算法关（10~14）：停留本页读参考代码
+      if (r.code) renderCode(r.code, true);   // 算法关（10~13）：停留本页读参考代码
       if (r.fragment) {
         fragments.push(r.fragment);
         await loadMap();
         if (r.done) { showFinish(); return; }
-        // 带 code 的关卡不自动跳关，读完代码后从航线图进入下一关
+        // 带 code 的关卡不自动跳关（出「下一题」按钮）；无 code 的主线关 900ms 自动跳
         if (!r.code) setTimeout(() => { openLevel(current.id + 1); $("answerInput").value = ""; }, 900);
+      }
+      // 停留场景（算法关读代码 / 附加题）给「下一题」按钮，按航线图顺序进下一个主线关
+      const nid = nextLevelId(current.id);
+      if ((r.code || (!r.fragment && !r.already)) && !r.done && nid) {
+        $("checkMsg").innerHTML += ` <button id="nextBtn" class="btn btn-primary btn-sm">下一题 →</button>`;
+        $("nextBtn").addEventListener("click", async () => {
+          await openLevel(nid);
+          $("answerInput").value = "";
+          window.scrollTo({ top: 0 });
+        });
       }
     } else {
       $("checkMsg").innerHTML = `<span class="err">${ICONS.x}${r.message || "答案不对"}</span>`;
@@ -341,6 +351,14 @@ function renderCode(code, autoOpen = false) {
   panel.classList.remove("hidden");
   $("codeBlock").textContent = code;
   panel.open = !!autoOpen;
+}
+
+/* 「下一题」导航：按航线图顺序取当前关之后的下一个主线关（跳过附加题） */
+function nextLevelId(fromId) {
+  const idx = LEVELS.findIndex(l => l.id === fromId);
+  for (let i = idx + 1; i < LEVELS.length; i++)
+    if (!LEVELS[i].extra) return LEVELS[i].id;
+  return null;
 }
 
 $("hintBtn").addEventListener("click", async () => {
