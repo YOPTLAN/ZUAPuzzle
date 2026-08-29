@@ -40,7 +40,7 @@ powershell -ExecutionPolicy Bypass -File setup.ps1   # 仅首次：建 .venv + �
 
 - **顺序解锁**：第 N 关需前 N−1 关全部 solved；未解锁 GET 返回 403；碎片按 `config.FRAGMENT_LEVEL_RANGE` 拼接为终极答案（服务端动态计算，改碎片=改终极答案）
 - **附加关（extra）**：主线外可选挑战（现为「10（附加题）· 排序实验室·附加挑战」，id=-10）。规则：`extra: True` 不计碎片链/通关进度/排行榜；`requires: 10` 表示通过第 1~10 关后解锁（主线关不需要该字段）；id 可取主线外的任意整数（如 -10 / 102，路由按 Pydantic 转换、负数也可用），前端展示用 `label`（如 "10（附加题）"）；可带 `bars` 等交互字段；答案仍走 `/check` 接口并受同样限流；`total_levels()`/`all_regular_solved()` 只数常规关，排行榜 SQL 按常规关 **id 白名单**过滤（不能写 `level_id <= 15`——负数附加关 id 会混入）。⚠️ **附加关无 `fragment` 字段**——`public_level`/`api_check`/`api_guess`/前端必须全部容忍缺失（曾因漏改 `public_level` 导致通关附加关后 `/api/levels` KeyError 500，全站航线图挂掉）
-- **通关教学代码**：第 10~13 关的 `code` 字段是 C 语言参考实现（内含本关真实数据，编译运行即得本关答案），仅在该关 solved 后随 `/api/levels/{id}` 与 `/check` 下发（未通关为 None，防泄题解法）；前端 `<details id="codePanel">` 折叠展示、通关瞬间自动展开，且带 code 的关卡**通关后不自动跳下一关**（停留读代码）。改代码字段后必须 gcc 实测：`.tmp/verify_code_teaching.py`（编译运行四段代码并断言输出=答案）
+- **通关教学代码**：第 10~13 关的 `code` 字段是 C 语言参考实现（内含本关真实数据，编译运行即得本关答案），仅在该关 solved 后随 `/api/levels/{id}` 与 `/check` 下发（未通关为 None，防泄题解法）；前端 `<details id="codePanel">` 折叠展示、通关瞬间自动展开，且带 code 的关卡**通关后不自动跳下一关**（停留读代码，出现「下一题」按钮；附加题通关后同样出现——按钮按航线图顺序进下一个主线关、跳过附加题）。改代码字段后必须 gcc 实测：`.tmp/verify_code_teaching.py`（编译运行四段代码并断言输出=答案）
 - **提示系统**：解锁记录持久化在 `hints_revealed` 表；第 k 条提示需 `HINT_UNLOCK_DELAYS[k]` 秒（自首次打开关卡 `level_views.viewed_at` 起算，服务端计时）；前端 `renderHintList` 常驻显示，刷新/重启不丢
 - **内嵌素材**：`levels.py` 的 `embed` 字段 → 前端 iframe 渲染；**素材路径必须在 `config.EMBEDDABLE_STATIC_HTML` 白名单内**（否则被安全头拦截报 ERR_BLOCKED_BY_RESPONSE）；素材页脚本一律外置 .js（CSP `script-src 'self'` 禁内联）
 - **安全**：答案只存服务端；昵称正则白名单 + 一次性登记 + textContent 渲染（防 XSS）；答错单关冷却 + 会话级累计锁定；CSP/XFO 头全局，白名单页放行同源 frame；/docs 已关闭
