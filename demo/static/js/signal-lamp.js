@@ -49,6 +49,7 @@
       if (li < letters.length - 1) seq.push({ on: false, t: 3 });   // 字母间隔
     });
     seq.push({ on: false, t: 15 });                                 // 循环间歇
+    seq.unshift({ on: false, t: 2000 / T });                        // 重播/起播前 2 秒空白音，便于集中注意力
 
     let i = 0;
     (function step() {
