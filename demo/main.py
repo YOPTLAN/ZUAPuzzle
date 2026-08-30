@@ -63,6 +63,9 @@ async def security_headers(request: Request, call_next):
         "font-src 'self' fonts.gstatic.com; img-src 'self'; connect-src 'self'; "
         f"object-src 'none'; base-uri 'self'; frame-ancestors {frame_ancestors}")
     response.headers["X-Content-Type-Options"] = "nosniff"
+    # no-cache = 可缓存但每次必须回源校验（StaticFiles 自带 ETag，命中时 304 极廉价）：
+    # 前端改动后玩家普通刷新即可拿到新版，杜绝“改了脚本页面不更新”的缓存问题
+    response.headers["Cache-Control"] = "no-cache"
     if not embeddable:
         response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
