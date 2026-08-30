@@ -15,7 +15,7 @@
 | 3 | 第一章 · 启程 | 0 与 1 的世界 | `computer` | 二进制转 ASCII（8 位一组，无空格版） |
 | 4 | 第一章 · 启程 | 编码不等于加密 | `aeronautics` | `static/cargo-note.html` 英文货单藏 Base64：首字母竖读 = `YWVyb25hdXRpY3M=`（15 位）+ 末尾封章 `=`；答案不变 |
 | 5 | 第二章 · 探秘 | 浏览器里的侦探 | `radar` | F12 Console 输出 `R_A_D_A_R` |
-| 6 | 第二章 · 探秘 | 藏在图片里 | `centersquare` | `static/plaza.svg` 注释；兼容 `center_square` / `centralsquare` / `central_square` |
+| 6 | 第二章 · 探秘 | 藏在图片里 | `centersquare` | `static/map.jpg`（后缀名更改为 `.7z`/`.rar` 后解码）；兼容 `center_square` / `centralsquare` / `central_square` |
 | 7 | 第二章 · 探秘 | 404 未找到 | `robot` | 链路：`/missing`(404) → `/robots.txt` → `/secret` |
 | 8 | 第二章 · 探秘 | 会自我描述的信号 | `312211` | 外观数列第 6 行（RLE 思想） |
 | 9 | 第三章 · 基础算法训练 | 猜数大师 | **无固定答案** | 目标数由会话 token 派生（每人不同），≤11 次二分猜中即过 |
