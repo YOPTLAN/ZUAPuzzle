@@ -255,6 +255,7 @@ def api_level(request: Request, response: Response, level_id: int):
         "console": lv.get("console"),
         "bars": lv.get("bars"),
         "embed": lv.get("embed"),
+        "signal": lv.get("signal"),   # L2 摩斯点划串（服务端由答案生成，客户端不含明文）
         # 教学代码（C 参考实现）只在通关后下发，未通关恒为 None（防泄题解法）
         "code": lv.get("code") if solved else None,
         "viewed_at": viewed_at,

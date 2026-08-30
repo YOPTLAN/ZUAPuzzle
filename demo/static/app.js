@@ -102,7 +102,14 @@ async function openLevel(id) {
   const emb = $("embedArea");
   if (current.embed) {
     emb.classList.remove("hidden");
+    // iframe 加载完成后把服务端生成的摩斯点划串注入素材页（明文不出服务端）
+    emb.onload = function () {
+      try { this.contentWindow.setSignal(current.signal || null); } catch (_) {}
+    };
     if (emb.getAttribute("src") !== current.embed) emb.setAttribute("src", current.embed);
+    if (emb.contentWindow && emb.contentWindow.setSignal) {
+      try { emb.contentWindow.setSignal(current.signal || null); } catch (_) {}   // src 未变时补注入
+    }
   } else {
     emb.classList.add("hidden");
     emb.removeAttribute("src");
@@ -328,12 +335,20 @@ $("guessBtn").addEventListener("click", async () => {
   }
 });
 
-/* 提示：已解锁的提示持久显示（服务端记忆，刷新/重开不消失） */
+/* 提示：已解锁的提示持久显示（服务端记忆，刷新/重开不消失）。
+   文本走纯文本节点渲染——提示里可能出现 <!-- --> 这类字面量，用 innerHTML 会被浏览器当注释吞掉 */
 function renderHintList(texts) {
   const box = $("hintList");
-  box.innerHTML = (texts || []).map((t, i) =>
-    `<div class="hint-item">${ICONS.bulb}<b>提示 ${i + 1}</b>：${t}</div>`
-  ).join("");
+  box.innerHTML = "";
+  (texts || []).forEach((t, i) => {
+    const div = document.createElement("div");
+    div.className = "hint-item";
+    const label = document.createElement("b");
+    label.innerHTML = ICONS.bulb + `提示 ${i + 1}：`;   // 图标是自有常量，安全
+    div.appendChild(label);
+    div.appendChild(document.createTextNode(t));
+    box.appendChild(div);
+  });
 }
 
 /* ---------- 通关参考代码（C 语言）----------

@@ -11,7 +11,7 @@
 | 关 | 章节 | 标题 | 答案 | 线索位置 / 说明 |
 |---|---|---|---|---|
 | 1 | 第一章 · 启程 | 信号接收 | `zua` | 首页 HTML 注释 |
-| 2 | 第一章 · 启程 | 电码电报 | `welcome` | `static/signal-lamp.html` 信号灯循环闪烁 WELCOME 的摩斯码（亮=点，长亮=划），玩家自行抄录；答案不变 |
+| 2 | 第一章 · 启程 | 电码电报 | `welcome` | `static/signal-lamp.html` 信号灯闪烁 + ♪ 按钮同步摩斯哔声（Web Audio 代码合成，零音频文件）播 WELCOME（短=点，长=划）；点划串由服务端按答案生成、经 api_level `signal` 字段下发，客户端源码不含明文；2026-08-30 起新增声音通道，答案不变 |
 | 3 | 第一章 · 启程 | 0 与 1 的世界 | `computer` | 二进制转 ASCII（8 位一组，无空格版） |
 | 4 | 第一章 · 启程 | 编码不等于加密 | `aeronautics` | `static/cargo-note.html` 英文货单藏 Base64：首字母竖读 = `YWVyb25hdXRpY3M=`（15 位）+ 末尾封章 `=`；答案不变 |
 | 5 | 第二章 · 探秘 | 浏览器里的侦探 | `radar` | F12 Console 输出 `R_A_D_A_R` |

@@ -33,12 +33,16 @@
     font-family: inherit; font-size: 13px;
   }
   button:hover { border-color: #FBBF24; box-shadow: 0 0 12px rgba(251,191,36,.25); }
+  .btns { display: flex; gap: 12px; }
 </style>
 </head>
 <body>
   <div class="lamp-shell"><div class="lamp" id="lamp"></div></div>
   <div class="status" id="status">RECEIVING · LOOP</div>
-  <button id="replay">↻ REPLAY</button>
+  <div class="btns">
+    <button id="replay">↻ REPLAY</button>
+    <button id="sound">♪ 播放声音</button>
+  </div>
 <script src="/static/js/signal-lamp.js"></script>
 </body>
 </html>
